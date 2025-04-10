@@ -1,5 +1,6 @@
 ﻿using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,7 +10,6 @@ using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
-using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,7 +63,8 @@ app.MapPost("/bot", async context =>
         var json = await reader.ReadToEndAsync();
         var settings = new JsonSerializerSettings
         {
-            Converters = { new UnixTimestampDateConverter() }
+            DateParseHandling = DateParseHandling.None,
+            Converters = { new SafeEnumConverter<MessageEntityType>() }
         };
         update = JsonConvert.DeserializeObject<Update>(json, settings);
     }
@@ -203,26 +204,19 @@ public class ApiData
     public string Client_email { get; set; } = "";
 }
 
-// === Custom JSON Converter ===
-public class UnixTimestampDateConverter : JsonConverter
+// === Safe Enum Converter ===
+public class SafeEnumConverter<T> : StringEnumConverter where T : struct, Enum
 {
-    public override bool CanConvert(Type objectType) => objectType == typeof(DateTime) || objectType == typeof(DateTime?);
-
     public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
     {
-        if (reader.TokenType == JsonToken.Integer && reader.Value is long timestamp)
+        if (reader.TokenType == JsonToken.String)
         {
-            return DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
+            var enumText = reader.Value?.ToString();
+            if (Enum.TryParse(enumText, true, out T parsedEnum))
+            {
+                return parsedEnum;
+            }
         }
-        return null;
-    }
-
-    public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
-    {
-        if (value is DateTime dateTime)
-        {
-            var unix = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
-            writer.WriteValue(unix);
-        }
+        return default(T);
     }
 }
