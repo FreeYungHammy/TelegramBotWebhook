@@ -193,7 +193,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
         {
             string GetField(string label) =>
-                System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"{label} = `([^`]+)`").Groups[1].Value;
+                System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"`{label}`\\s*=\\s*`([^`]+)`").Groups[1].Value;
+
 
             var responseCode = GetField("ResponseCode");
             var responseDesc = GetField("ResponseDescription");
