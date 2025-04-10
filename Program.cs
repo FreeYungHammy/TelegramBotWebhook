@@ -192,9 +192,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 
         if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
         {
-
             string GetField(string label) =>
-            System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"{label} = `([^`]+)`").Groups[1].Value;
+                System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"{label} = `([^`]+)`").Groups[1].Value;
 
             var responseCode = GetField("ResponseCode");
             var responseDesc = GetField("ResponseDescription");
@@ -208,16 +207,16 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
                 if (parts.Length > 1)
                     transactionId = parts[1].Trim().Trim('`', '}', ']', ',', ' ');
             }
-                return $"Order: {orderId}\n" +
-                $"Transaction ID: {data.Trans_id}\n" +
-                $"Response Code: {data.Response_code}\n" +
-                $"Response Description: {data.Response_Desc}\n" +
-                $"Bank Code: {data.BankCode}\n" +
-                $"Bank Description: {data.Bank_Desc}\n" +
-                $"Date: {data.Trans_date}\n" +
-                $"Status: {data.ReplyDesc}\n" +
-                $"Client: {data.Client_fullName}\n" +
-                $"Email: {data.Client_email}";
+
+            return $"Order: {orderId}\n" +
+                   $"Date: {data.Trans_date}\n" +
+                   $"Transaction ID: {transactionId}\n" +
+                   $"Response Code: {responseCode}\n" +
+                   $"Response Description: {responseDesc}\n" +
+                   $"Bank Code: {bankCode}\n" +
+                   $"Bank Description: {bankDesc}\n" +
+                   $"Client: {data.Client_fullName}\n" +
+                   $"Email: {data.Client_email}";
         }
         else
         {
