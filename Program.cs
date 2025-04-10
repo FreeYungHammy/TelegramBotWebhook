@@ -185,11 +185,32 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 
         if (result?.Data == null || result.Data.Count == 0)
         {
-            return $"❌ Order {orderId}: No data found.";
+            return $"Order {orderId}: No data found.";
         }
 
         var data = result.Data[0];
-        return $"Order: {orderId}\nDate: {data.Trans_date}\nStatus: {data.ReplyDesc}\nClient: {data.Client_fullName}\nEmail: {data.Client_email}";
+
+        if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Order: {orderId}\n" +
+                $"Date: {data.Trans_date}\n" +
+                $"Status: {data.ReplyDesc}\n" +
+                $"Client: {data.Client_fullName}\n" +
+                $"Email: {data.Client_email}";
+        }
+        else
+        {
+            return $"OrderID: {orderId}\n+" +
+                $"TransactionID: {data.Trans_id}"+
+                $"Response Code: {data.Response_code}" +
+                $"Bank Code: {data.BankCode}" +
+                $"Response Description: {data.Response_Desc}" +
+                $"Bank Description: {data.Bank_Desc}" +
+                $"Date: {data.Trans_date}\n" +
+                $"Status: {data.ReplyDesc}\n" +
+                $"Client: {data.Client_fullName}\n" +
+                $"Email: {data.Client_email}";
+        }
     }
     catch (Exception e)
     {
@@ -212,4 +233,10 @@ public class ApiData
     public string Trans_date { get; set; } = "";
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
+    public string Response_code {get; set; } = "";
+    public string Response_Desc { get; set; } = "";
+    public string BankCode { get; set; } = "";
+    public string Bank_Desc { get; set; } = "";
+    public string Trans_id { get; set; } = "";
+
 }
