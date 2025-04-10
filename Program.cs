@@ -8,8 +8,9 @@ using Microsoft.AspNetCore.Http;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,14 +63,19 @@ app.MapPost("/bot", async context =>
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
         Console.WriteLine("\u2699\ufe0f Raw JSON: " + json);
-        var settings = new JsonSerializerSettings
+
+        update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
-            DateParseHandling = DateParseHandling.None,
-            MissingMemberHandling = MissingMemberHandling.Ignore,
-            NullValueHandling = NullValueHandling.Ignore,
-            Converters = { new SafeEnumConverter<MessageEntityType>() }
-        };
-        update = JsonConvert.DeserializeObject<Update>(json, settings);
+            PropertyNameCaseInsensitive = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        });
+
+        if (update == null)
+        {
+            Console.WriteLine("\u274c Update deserialized as null.");
+            context.Response.StatusCode = 400;
+            return;
+        }
     }
     catch (Exception ex)
     {
@@ -78,14 +84,18 @@ app.MapPost("/bot", async context =>
         return;
     }
 
-    if (update?.Message == null || update.Message.Text == null)
+    if (update.Message == null || update.Message.Text == null)
+    {
+        Console.WriteLine("\u26a0\ufe0f No message or text content.");
         return;
+    }
 
     var chat = update.Message.Chat;
     var text = update.Message.Text.Trim();
     var chatId = chat.Id;
+    var date = update.Message.Date;
+    Console.WriteLine($"\ud83d\udd52 Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
 
-    // Register payment intent
     if (text.ToLower().Contains("/paymentstatus"))
     {
         if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
@@ -101,7 +111,6 @@ app.MapPost("/bot", async context =>
         return;
     }
 
-    // Register company ID if awaiting
     if (awaitingCompanyId.ContainsKey(chatId))
     {
         var companyId = text.Trim();
@@ -116,7 +125,6 @@ app.MapPost("/bot", async context =>
         return;
     }
 
-    // Handle order ID
     if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
     {
         var result = await QueryPaymentApiAsync(companyIdToUse, text);
@@ -124,7 +132,6 @@ app.MapPost("/bot", async context =>
         return;
     }
 
-    // Handle bot mention
     if (text.Contains("@StatusPaymentBot"))
     {
         if (groupCompanyMap.TryGetValue(chatId, out var cid))
@@ -205,21 +212,4 @@ public class ApiData
     public string Trans_date { get; set; } = "";
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
-}
-
-// === Safe Enum Converter ===
-public class SafeEnumConverter<T> : StringEnumConverter where T : struct, Enum
-{
-    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
-    {
-        if (reader.TokenType == JsonToken.String)
-        {
-            var enumText = reader.Value?.ToString();
-            if (Enum.TryParse(enumText, true, out T parsedEnum))
-            {
-                return parsedEnum;
-            }
-        }
-        return default(T);
-    }
 }
