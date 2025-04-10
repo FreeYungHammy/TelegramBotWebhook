@@ -59,7 +59,11 @@ app.MapPost("/bot", async context =>
     {
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
-        update = JsonConvert.DeserializeObject<Update>(json);
+        var settings = new JsonSerializerSettings
+        {
+            DateParseHandling = DateParseHandling.None
+        };
+        update = JsonConvert.DeserializeObject<Update>(json, settings);
     }
     catch (Exception ex)
     {
@@ -101,7 +105,7 @@ app.MapPost("/bot", async context =>
 
         await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-        await botClient.SendMessage (chatId, $"Company ID '{companyId}' registered successfully!");
+        await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
         await botClient.SendMessage(chatId, "What’s the Order ID?");
         return;
     }
