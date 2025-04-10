@@ -176,7 +176,7 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
     try
     {
         using var client = new HttpClient();
-        var url = $"https://process.highisk.com/member/getstatus.asp?CompanyNum={companyId}&Order={orderId}";
+        var url = $"https://process.highisk.com/member/getstatusBOT.asp?CompanyNum={companyId}&Order={orderId}";
         var response = await client.GetAsync(url);
         response.EnsureSuccessStatusCode();
 
