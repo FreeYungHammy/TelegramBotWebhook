@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -61,7 +63,7 @@ app.MapPost("/bot", async context =>
         var json = await reader.ReadToEndAsync();
         var settings = new JsonSerializerSettings
         {
-            DateParseHandling = DateParseHandling.None
+            Converters = { new UnixTimestampDateConverter() }
         };
         update = JsonConvert.DeserializeObject<Update>(json, settings);
     }
@@ -85,12 +87,12 @@ app.MapPost("/bot", async context =>
         if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
         {
             awaitingOrderId[chatId] = registeredCompanyId;
-            await botClient.SendMessage(chatId, "What’s the Order ID?");
+            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
         }
         else
         {
             awaitingCompanyId[chatId] = true;
-            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+            await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
         }
         return;
     }
@@ -105,8 +107,8 @@ app.MapPost("/bot", async context =>
 
         await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-        await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
-        await botClient.SendMessage(chatId, "What’s the Order ID?");
+        await botClient.SendTextMessageAsync(chatId, $"Company ID '{companyId}' registered successfully!");
+        await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
         return;
     }
 
@@ -114,7 +116,7 @@ app.MapPost("/bot", async context =>
     if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
     {
         var result = await QueryPaymentApiAsync(companyIdToUse, text);
-        await botClient.SendMessage(chatId, result);
+        await botClient.SendTextMessageAsync(chatId, result);
         return;
     }
 
@@ -124,12 +126,12 @@ app.MapPost("/bot", async context =>
         if (groupCompanyMap.TryGetValue(chatId, out var cid))
         {
             awaitingOrderId[chatId] = cid;
-            await botClient.SendMessage(chatId, "What’s the Order ID?");
+            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
         }
         else
         {
             awaitingCompanyId[chatId] = true;
-            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+            await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
         }
     }
 });
@@ -142,7 +144,7 @@ app.MapGet("/setwebhook", async context =>
         ?? throw new Exception("PUBLIC_URL not set.");
     var webhookUrl = $"{domain}/bot";
 
-    await botClient.SetWebhook(webhookUrl);
+    await botClient.SetWebhookAsync(webhookUrl);
     await context.Response.WriteAsync("Webhook set!");
 });
 
@@ -199,4 +201,28 @@ public class ApiData
     public string Trans_date { get; set; } = "";
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
+}
+
+// === Custom JSON Converter ===
+public class UnixTimestampDateConverter : JsonConverter
+{
+    public override bool CanConvert(Type objectType) => objectType == typeof(DateTime) || objectType == typeof(DateTime?);
+
+    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
+    {
+        if (reader.TokenType == JsonToken.Integer && reader.Value is long timestamp)
+        {
+            return DateTimeOffset.FromUnixTimeSeconds(timestamp).UtcDateTime;
+        }
+        return null;
+    }
+
+    public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
+    {
+        if (value is DateTime dateTime)
+        {
+            var unix = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
+            writer.WriteValue(unix);
+        }
+    }
 }
