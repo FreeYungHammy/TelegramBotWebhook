@@ -52,7 +52,7 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
 // === Webhook Entry Point ===
 app.MapPost("/bot", async context =>
 {
-    Console.WriteLine("📩 Incoming request to /bot");
+    Console.WriteLine("\ud83d\udce9 Incoming request to /bot");
 
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
     Update? update;
@@ -61,16 +61,19 @@ app.MapPost("/bot", async context =>
     {
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
+        Console.WriteLine("\u2699\ufe0f Raw JSON: " + json);
         var settings = new JsonSerializerSettings
         {
             DateParseHandling = DateParseHandling.None,
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+            NullValueHandling = NullValueHandling.Ignore,
             Converters = { new SafeEnumConverter<MessageEntityType>() }
         };
         update = JsonConvert.DeserializeObject<Update>(json, settings);
     }
     catch (Exception ex)
     {
-        Console.WriteLine("❌ Deserialization failed: " + ex.Message);
+        Console.WriteLine("\u274c Deserialization failed: " + ex.Message);
         context.Response.StatusCode = 400;
         return;
     }
