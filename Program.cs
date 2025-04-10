@@ -192,7 +192,28 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 
         if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
         {
-            return $"Order: {orderId}\n" +
+
+            string GetField(string label) =>
+            System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"{label} = `([^`]+)`").Groups[1].Value;
+
+            var responseCode = GetField("ResponseCode");
+            var responseDesc = GetField("ResponseDescription");
+            var bankCode = GetField("BankCode");
+            var bankDesc = GetField("BankDescription");
+
+            var transactionId = "";
+            if (data.ReplyDesc.Contains("transactionId:"))
+            {
+                var parts = data.ReplyDesc.Split("transactionId:");
+                if (parts.Length > 1)
+                    transactionId = parts[1].Trim().Trim('`', '}', ']', ',', ' ');
+            }
+                return $"Order: {orderId}\n" +
+                $"Transaction ID: {data.Trans_id}\n" +
+                $"Response Code: {data.Response_code}\n" +
+                $"Response Description: {data.Response_Desc}\n" +
+                $"Bank Code: {data.BankCode}\n" +
+                $"Bank Description: {data.Bank_Desc}\n" +
                 $"Date: {data.Trans_date}\n" +
                 $"Status: {data.ReplyDesc}\n" +
                 $"Client: {data.Client_fullName}\n" +
@@ -200,16 +221,11 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         }
         else
         {
-            return $"OrderID: {orderId}\n+" +
-                $"TransactionID: {data.Trans_id}"+
-                $"Response Code: {data.Response_code}" +
-                $"Bank Code: {data.BankCode}" +
-                $"Response Description: {data.Response_Desc}" +
-                $"Bank Description: {data.Bank_Desc}" +
-                $"Date: {data.Trans_date}\n" +
-                $"Status: {data.ReplyDesc}\n" +
-                $"Client: {data.Client_fullName}\n" +
-                $"Email: {data.Client_email}";
+            return $"Order: {orderId}\n" +
+                       $"Date: {data.Trans_date}\n" +
+                       $"Status: {data.ReplyDesc}\n" +
+                       $"Client: {data.Client_fullName}\n" +
+                       $"Email: {data.Client_email}";
         }
     }
     catch (Exception e)
