@@ -11,6 +11,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Newtonsoft.Json;
+using Telegram.Bot.Types.ReplyMarkups;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,14 +80,45 @@ app.MapPost("/bot", async context =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine("\u274c Deserialization failed: " + ex.Message);
+        Console.WriteLine("Deserialization failed: " + ex.Message);
         context.Response.StatusCode = 400;
         return;
     }
 
     if (update.Message == null || update.Message.Text == null)
     {
-        Console.WriteLine("\u26a0\ufe0f No message or text content.");
+        Console.WriteLine("No message or text content.");
+        return;
+    }
+
+    if (update.CallbackQuery != null)
+    {
+        var callback = update.CallbackQuery;
+        var callbackChatId = callback.Message.Chat.Id;
+
+        if (callback.Data == "check_status")
+        {
+            if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
+            {
+                awaitingOrderId[callbackChatId] = companyId;
+                await botClient.SendMessage(callbackChatId, "What’s the Order ID?");
+            }
+            else
+            {
+                awaitingCompanyId[callbackChatId] = true;
+                await botClient.SendMessage(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
+            }
+        }
+        else if (callback.Data == "help_info")
+        {
+            await botClient.SendMessage(callbackChatId,
+                "📌 *Help Guide*\n\n" +
+                "• Use `/paymentstatus` to start a payment status request.\n" +
+                "• Provide your Company ID and Order ID as prompted.\n" +
+                "• You can mention me anytime with @StatusPaymentBot.",
+                parseMode: ParseMode.Markdown);
+        }
+
         return;
     }
 
@@ -94,7 +126,7 @@ app.MapPost("/bot", async context =>
     var text = update.Message.Text.Trim();
     var chatId = chat.Id;
     var date = update.Message.Date;
-    Console.WriteLine($"\ud83d\udd52 Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
+    Console.WriteLine($"Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
 
     if (text.ToLower().Contains("/paymentstatus"))
     {
@@ -134,17 +166,23 @@ app.MapPost("/bot", async context =>
 
     if (text.Contains("@StatusPaymentBot"))
     {
-        if (groupCompanyMap.TryGetValue(chatId, out var cid))
+        var keyboard = new InlineKeyboardMarkup(new[]
         {
-            awaitingOrderId[chatId] = cid;
-            await botClient.SendMessage(chatId, "What’s the Order ID?");
-        }
-        else
+        new[]
         {
-            awaitingCompanyId[chatId] = true;
-            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
+            InlineKeyboardButton.WithCallbackData("Help", "help_info")
         }
+    });
+
+        await botClient.SendMessage(
+            chatId,
+            "What would you like to do?",
+            replyMarkup: keyboard
+        );
+        return;
     }
+
 });
 
 // === Webhook Setter ===
@@ -192,8 +230,14 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 
         if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
         {
-            string GetField(string label) =>
-                System.Text.RegularExpressions.Regex.Match(data.ReplyDesc, $"`{label}`\\s*=\\s*`([^`]+)`").Groups[1].Value;
+            string GetField(string label)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(
+                    data.ReplyDesc,
+                    $"`{label}`\\s*=\\s*`([^`]+)`"
+                );
+                return match.Success ? match.Groups[1].Value.Trim().Split("}],")[0] : "";
+            }
 
 
             var responseCode = GetField("ResponseCode");
