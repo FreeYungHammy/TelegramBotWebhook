@@ -64,7 +64,7 @@ app.MapPost("/bot", async context =>
         var json = await reader.ReadToEndAsync();
         Console.WriteLine("\u2699\ufe0f Raw JSON: " + json);
 
-        update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
+        update = System.Text.Json.JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -101,12 +101,12 @@ app.MapPost("/bot", async context =>
         if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
         {
             awaitingOrderId[chatId] = registeredCompanyId;
-            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
+            await botClient.SendMessage(chatId, "What’s the Order ID?");
         }
         else
         {
             awaitingCompanyId[chatId] = true;
-            await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
+            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
         }
         return;
     }
@@ -120,15 +120,15 @@ app.MapPost("/bot", async context =>
 
         await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-        await botClient.SendTextMessageAsync(chatId, $"Company ID '{companyId}' registered successfully!");
-        await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
+        await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
+        await botClient.SendMessage(chatId, "What’s the Order ID?");
         return;
     }
 
     if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
     {
         var result = await QueryPaymentApiAsync(companyIdToUse, text);
-        await botClient.SendTextMessageAsync(chatId, result);
+        await botClient.SendMessage(chatId, result);
         return;
     }
 
@@ -137,12 +137,12 @@ app.MapPost("/bot", async context =>
         if (groupCompanyMap.TryGetValue(chatId, out var cid))
         {
             awaitingOrderId[chatId] = cid;
-            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
+            await botClient.SendMessage(chatId, "What’s the Order ID?");
         }
         else
         {
             awaitingCompanyId[chatId] = true;
-            await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
+            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
         }
     }
 });
@@ -155,7 +155,7 @@ app.MapGet("/setwebhook", async context =>
         ?? throw new Exception("PUBLIC_URL not set.");
     var webhookUrl = $"{domain}/bot";
 
-    await botClient.SetWebhookAsync(webhookUrl);
+    await botClient.SetWebhook(webhookUrl);
     await context.Response.WriteAsync("Webhook set!");
 });
 
