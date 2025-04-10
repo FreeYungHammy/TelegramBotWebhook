@@ -1,4 +1,4 @@
-using Telegram.Bot;
+﻿using Telegram.Bot;
 using Telegram.Bot.Types;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
@@ -11,7 +11,7 @@ using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Register required services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -19,36 +19,41 @@ builder.Services.AddSwaggerGen();
 // Register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
-    var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? throw new Exception("Bot token not set.");
+    var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
+        ?? throw new Exception("Bot token not set.");
     return new TelegramBotClient(token);
 });
 
 var app = builder.Build();
 
-// Set up in-memory storage for pending order IDs and company registration statuses
+// Setup in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
 var awaitingCompanyId = new ConcurrentDictionary<long, bool>();
 
-// Define paths for file storage
-string localPath = Path.Combine(Directory.GetCurrentDirectory(), "group_company_links.txt"); // Local development
-string azurePath = Path.Combine("/home/site/wwwroot", "group_company_links.txt"); // Azure environment
+// Azure expected file path
+string storageFilePath = Path.Combine("/home/site/wwwroot", "group_company_links.txt");
 
-// Load company data from file if available
+// Ensure file exists
+if (!File.Exists(storageFilePath))
+{
+    File.Create(storageFilePath).Close();
+}
+
+// Load file data into memory
 var groupCompanyMap = new ConcurrentDictionary<long, string>(
-    File.Exists(azurePath)
-        ? File.ReadAllLines(azurePath)
-              .Select(line => line.Split(','))
-              .Where(parts => parts.Length == 2 && long.TryParse(parts[0], out _))
-              .ToDictionary(parts => long.Parse(parts[0]), parts => parts[1].Trim())
-        : new Dictionary<long, string>()
+    File.ReadAllLines(storageFilePath)
+        .Select(line => line.Split(','))
+        .Where(parts => parts.Length == 2 && long.TryParse(parts[0], out _))
+        .ToDictionary(parts => long.Parse(parts[0]), parts => parts[1].Trim())
 );
 
+// === Webhook Entry Point ===
 app.MapPost("/bot", async context =>
 {
-    Console.WriteLine("Incoming request to /bot");
+    Console.WriteLine("📩 Incoming request to /bot");
 
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
-    Update? update = null;
+    Update? update;
 
     try
     {
@@ -58,7 +63,7 @@ app.MapPost("/bot", async context =>
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Deserialization failed: " + ex.Message);
+        Console.WriteLine("❌ Deserialization failed: " + ex.Message);
         context.Response.StatusCode = 400;
         return;
     }
@@ -70,27 +75,52 @@ app.MapPost("/bot", async context =>
     var text = update.Message.Text.Trim();
     var chatId = chat.Id;
 
+    // Register payment intent
     if (text.ToLower().Contains("/paymentstatus"))
     {
-        awaitingOrderId[chatId] = chatId.ToString();
-        await botClient.SendMessage(chatId, "What�s the Order ID?");
+        if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
+        {
+            awaitingOrderId[chatId] = registeredCompanyId;
+            await botClient.SendMessage(chatId, "What’s the Order ID?");
+        }
+        else
+        {
+            awaitingCompanyId[chatId] = true;
+            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+        }
         return;
     }
 
-    if (awaitingOrderId.ContainsKey(chatId))
+    // Register company ID if awaiting
+    if (awaitingCompanyId.ContainsKey(chatId))
     {
-        awaitingOrderId.Remove(chatId, out _);
-        var result = await QueryPaymentApiAsync(chatId.ToString(), text);
+        var companyId = text.Trim();
+        groupCompanyMap[chatId] = companyId;
+        awaitingCompanyId.TryRemove(chatId, out _);
+        awaitingOrderId[chatId] = companyId;
+
+        await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
+
+        await botClient.SendMessage (chatId, $"Company ID '{companyId}' registered successfully!");
+        await botClient.SendMessage(chatId, "What’s the Order ID?");
+        return;
+    }
+
+    // Handle order ID
+    if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
+    {
+        var result = await QueryPaymentApiAsync(companyIdToUse, text);
         await botClient.SendMessage(chatId, result);
         return;
     }
 
+    // Handle bot mention
     if (text.Contains("@StatusPaymentBot"))
     {
-        if (groupCompanyMap.TryGetValue(chatId, out var companyId))
+        if (groupCompanyMap.TryGetValue(chatId, out var cid))
         {
-            awaitingOrderId[chatId] = companyId;
-            await botClient.SendMessage(chatId, "What�s the Order ID?");
+            awaitingOrderId[chatId] = cid;
+            await botClient.SendMessage(chatId, "What’s the Order ID?");
         }
         else
         {
@@ -100,16 +130,18 @@ app.MapPost("/bot", async context =>
     }
 });
 
+// === Webhook Setter ===
 app.MapGet("/setwebhook", async context =>
 {
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
-    var domain = Environment.GetEnvironmentVariable("PUBLIC_URL") ?? throw new Exception("PUBLIC_URL not set");
+    var domain = Environment.GetEnvironmentVariable("PUBLIC_URL")
+        ?? throw new Exception("PUBLIC_URL not set.");
     var webhookUrl = $"{domain}/bot";
+
     await botClient.SetWebhook(webhookUrl);
     await context.Response.WriteAsync("Webhook set!");
 });
 
-// Use Swagger and SwaggerUI for Development
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -121,7 +153,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.Run();
 
-// API Call Logic
+// === API Helper ===
 async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 {
     try
@@ -130,24 +162,26 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         var url = $"https://process.highisk.com/member/getstatus.asp?CompanyNum={companyId}&Order={orderId}";
         var response = await client.GetAsync(url);
         response.EnsureSuccessStatusCode();
+
         var json = await response.Content.ReadAsStringAsync();
         var result = JsonConvert.DeserializeObject<ApiResponse>(json);
 
         if (result?.Data == null || result.Data.Count == 0)
         {
-            return $"Order {orderId}: No data was found for this transaction";
+            return $"❌ Order {orderId}: No data found.";
         }
 
         var data = result.Data[0];
-        return $"Order: {orderId}\nDate: {data.Trans_date}\nStatus: {data.ReplyDesc}\nClient: {data.Client_fullName}\nEmail: {data.Client_email}\n";
+        return $"Order: {orderId}\nDate: {data.Trans_date}\nStatus: {data.ReplyDesc}\nClient: {data.Client_fullName}\nEmail: {data.Client_email}";
     }
     catch (Exception e)
     {
-        Console.WriteLine("An error occured: " + e.Message);
+        Console.WriteLine("API error: " + e.Message);
         return "Failed to retrieve payment status.";
     }
 }
 
+// === API Models ===
 public class ApiResponse
 {
     public string Error { get; set; } = "";
