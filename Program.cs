@@ -32,6 +32,17 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 
 var app = builder.Build();
 
+app.UseHttpsRedirection();
+app.UseAuthorization();
+app.MapControllers();
+
+// 🛠️ Fix: Bind to Azure's required port
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+app.Urls.Add($"http://*:{port}");
+
+app.Run();
+
+
 // Setup in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
 var awaitingCompanyId = new ConcurrentDictionary<long, bool>();
