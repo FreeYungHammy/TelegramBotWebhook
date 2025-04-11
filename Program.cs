@@ -1,6 +1,7 @@
 ﻿using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,8 +11,9 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Newtonsoft.Json;
-using Telegram.Bot.Types.ReplyMarkups;
+using System.Text.RegularExpressions;
+
+using JsonSerializer = System.Text.Json.JsonSerializer; // Fix ambiguous reference
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -54,7 +56,7 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
 // === Webhook Entry Point ===
 app.MapPost("/bot", async context =>
 {
-    Console.WriteLine("\ud83d\udce9 Incoming request to /bot");
+    Console.WriteLine("Incoming request to /bot");
 
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
     Update? update;
@@ -63,9 +65,9 @@ app.MapPost("/bot", async context =>
     {
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
-        Console.WriteLine("\u2699\ufe0f Raw JSON: " + json);
+        Console.WriteLine("Raw JSON: " + json);
 
-        update = System.Text.Json.JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
+        update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
@@ -73,7 +75,7 @@ app.MapPost("/bot", async context =>
 
         if (update == null)
         {
-            Console.WriteLine("\u274c Update deserialized as null.");
+            Console.WriteLine("Update deserialized as null.");
             context.Response.StatusCode = 400;
             return;
         }
@@ -82,12 +84,6 @@ app.MapPost("/bot", async context =>
     {
         Console.WriteLine("Deserialization failed: " + ex.Message);
         context.Response.StatusCode = 400;
-        return;
-    }
-
-    if (update.Message == null || update.Message.Text == null)
-    {
-        Console.WriteLine("No message or text content.");
         return;
     }
 
@@ -112,13 +108,20 @@ app.MapPost("/bot", async context =>
         else if (callback.Data == "help_info")
         {
             await botClient.SendMessage(callbackChatId,
-                "📌 *Help Guide*\n\n" +
+                "*Help Guide*\n\n" +
                 "• Use `/paymentstatus` to start a payment status request.\n" +
                 "• Provide your Company ID and Order ID as prompted.\n" +
                 "• You can mention me anytime with @StatusPaymentBot.",
                 parseMode: ParseMode.Markdown);
         }
 
+        await botClient.AnswerCallbackQuery(callback.Id);
+        return;
+    }
+
+    if (update.Message == null || update.Message.Text == null)
+    {
+        Console.WriteLine("⚠️ No message or text content.");
         return;
     }
 
@@ -126,7 +129,7 @@ app.MapPost("/bot", async context =>
     var text = update.Message.Text.Trim();
     var chatId = chat.Id;
     var date = update.Message.Date;
-    Console.WriteLine($"Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
+    Console.WriteLine($"⏱️ Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
 
     if (text.ToLower().Contains("/paymentstatus"))
     {
@@ -168,12 +171,12 @@ app.MapPost("/bot", async context =>
     {
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-        new[]
-        {
-            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
-            InlineKeyboardButton.WithCallbackData("Help", "help_info")
-        }
-    });
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
+                InlineKeyboardButton.WithCallbackData("Help", "help_info")
+            }
+        });
 
         await botClient.SendMessage(
             chatId,
@@ -182,31 +185,7 @@ app.MapPost("/bot", async context =>
         );
         return;
     }
-
 });
-
-// === Webhook Setter ===
-app.MapGet("/setwebhook", async context =>
-{
-    var botClient = app.Services.GetRequiredService<TelegramBotClient>();
-    var domain = Environment.GetEnvironmentVariable("PUBLIC_URL")
-        ?? throw new Exception("PUBLIC_URL not set.");
-    var webhookUrl = $"{domain}/bot";
-
-    await botClient.SetWebhook(webhookUrl);
-    await context.Response.WriteAsync("Webhook set!");
-});
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseHttpsRedirection();
-app.UseAuthorization();
-app.MapControllers();
-app.Run();
 
 // === API Helper ===
 async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
@@ -219,7 +198,7 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
-        var result = JsonConvert.DeserializeObject<ApiResponse>(json);
+        var result = System.Text.Json.JsonSerializer.Deserialize<ApiResponse>(json);
 
         if (result?.Data == null || result.Data.Count == 0)
         {
@@ -232,13 +211,9 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         {
             string GetField(string label)
             {
-                var match = System.Text.RegularExpressions.Regex.Match(
-                    data.ReplyDesc,
-                    $"`{label}`\\s*=\\s*`([^`]+)`"
-                );
-                return match.Success ? match.Groups[1].Value.Trim().Split("}],")[0] : "";
+                var match = Regex.Match(data.ReplyDesc, $"`{label}`\\s*=\\s*`([^`]*)`");
+                return match.Success ? match.Groups[1].Value.Trim().Split("]},")[0] : "";
             }
-
 
             var responseCode = GetField("ResponseCode");
             var responseDesc = GetField("ResponseDescription");
@@ -266,10 +241,10 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         else
         {
             return $"Order: {orderId}\n" +
-                       $"Date: {data.Trans_date}\n" +
-                       $"Status: {data.ReplyDesc}\n" +
-                       $"Client: {data.Client_fullName}\n" +
-                       $"Email: {data.Client_email}";
+                   $"Date: {data.Trans_date}\n" +
+                   $"Status: {data.ReplyDesc}\n" +
+                   $"Client: {data.Client_fullName}\n" +
+                   $"Email: {data.Client_email}";
         }
     }
     catch (Exception e)
@@ -279,11 +254,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
     }
 }
 
-// === API Models ===
 public class ApiResponse
 {
-    public string Error { get; set; } = "";
-    public string Message { get; set; } = "";
     public List<ApiData> Data { get; set; } = new();
 }
 
@@ -293,10 +265,4 @@ public class ApiData
     public string Trans_date { get; set; } = "";
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
-    public string Response_code {get; set; } = "";
-    public string Response_Desc { get; set; } = "";
-    public string BankCode { get; set; } = "";
-    public string Bank_Desc { get; set; } = "";
-    public string Trans_id { get; set; } = "";
-
 }
