@@ -62,7 +62,7 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
 
 // === Set Webhook Automatically ===
 var botUrl = Environment.GetEnvironmentVariable("PUBLIC_URL")
-             ?? throw new Exception("BOT_URL environment variable is not set.");
+             ?? throw new Exception("PUBLIC_URL environment variable is not set.");
 
 // Set the webhook URL (This happens automatically at startup)
 var botClient = app.Services.GetRequiredService<TelegramBotClient>();
@@ -106,6 +106,7 @@ app.MapPost("/api/bot", async context =>
     {
         var callback = update.CallbackQuery;
 
+        // Check if callback.Message and callback.Message.Chat are not null
         if (callback.Message?.Chat == null)
         {
             Console.WriteLine("Callback message or chat is null.");
@@ -115,6 +116,9 @@ app.MapPost("/api/bot", async context =>
 
         var callbackChatId = callback.Message.Chat.Id;
         Console.WriteLine($"Callback received: {callback.Data}");
+
+        // Log callback data to ensure the correct callback is received
+        Console.WriteLine($"Callback Data: {callback.Data}");
 
         try
         {
@@ -155,6 +159,7 @@ app.MapPost("/api/bot", async context =>
 
         return;
     }
+
     else if (update.Message != null && update.Message.Text != null)
     {
         var chat = update.Message.Chat;
