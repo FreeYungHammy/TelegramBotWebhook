@@ -65,7 +65,7 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
 );
 
 // === Webhook Entry Point ===
-app.MapPost("/bot", async context =>
+app.MapPost("/api/bot", async context =>
 {
     Console.WriteLine("Incoming request to /bot");
 
@@ -76,7 +76,7 @@ app.MapPost("/bot", async context =>
     {
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
-        Console.WriteLine("Raw JSON: " + json);
+        Console.WriteLine("Raw JSON: " + json); // Log raw JSON to see if Telegram is sending data
 
         update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
