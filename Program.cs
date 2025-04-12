@@ -12,18 +12,17 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using System.Threading;
 
-using JsonSerializer = System.Text.Json.JsonSerializer; // Fix ambiguous reference
+using JsonSerializer = System.Text.Json.JsonSerializer; //to resolve ambigious references 
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register required services
+// register required services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Register TelegramBotClient
+// register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
     var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
@@ -37,27 +36,27 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
-// Bind to Azure's required port
+// fix: Bind to Azure's required port
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Urls.Add($"http://*:{port}");
 
-// Optional test route
+// test route 
 app.MapGet("/", () => "Telegram bot backend is running.");
 
-// Setup in-memory state
+// in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
 var awaitingCompanyId = new ConcurrentDictionary<long, bool>();
 
 // Azure expected file path
 string storageFilePath = Path.Combine("/home/site/wwwroot", "group_company_links.txt");
 
-// Ensure file exists
+// checking file exists
 if (!File.Exists(storageFilePath))
 {
     File.Create(storageFilePath).Close();
 }
 
-// Load file data into memory
+// loading file data into memory
 var groupCompanyMap = new ConcurrentDictionary<long, string>(
     File.ReadAllLines(storageFilePath)
         .Select(line => line.Split(','))
@@ -101,7 +100,6 @@ app.MapPost("/bot", async context =>
 
     if (update.CallbackQuery != null)
     {
-        Console.WriteLine("CallbackQuery branch hit");
         var callback = update.CallbackQuery;
         var callbackChatId = callback.Message.Chat.Id;
         Console.WriteLine($"Callback received: {callback.Data}");
@@ -115,28 +113,27 @@ app.MapPost("/bot", async context =>
                 if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
                 {
                     awaitingOrderId[callbackChatId] = companyId;
-                    await botClient.SendMessage(callbackChatId, "What’s the Order ID?", cancellationToken: CancellationToken.None);
+                    await botClient.SendTextMessageAsync(callbackChatId, "What’s the Order ID?");
                 }
                 else
                 {
                     awaitingCompanyId[callbackChatId] = true;
-                    await botClient.SendMessage(callbackChatId, "Group not registered. Please reply with your Company ID to register.", cancellationToken: CancellationToken.None);
+                    await botClient.SendTextMessageAsync(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
                 }
             }
             else if (callback.Data == "help_info")
             {
                 Console.WriteLine("Processing 'help_info'...");
 
-                await botClient.SendMessage(callbackChatId,
+                await botClient.SendTextMessageAsync(callbackChatId,
                     "*Help Guide*\n\n" +
                     "• Use `/paymentstatus` to start a payment status request.\n" +
                     "• Provide your Company ID and Order ID as prompted.\n" +
                     "• You can mention me anytime with @StatusPaymentBot.",
-                    parseMode: ParseMode.Markdown,
-                    cancellationToken: CancellationToken.None);
+                    parseMode: ParseMode.Markdown);
             }
 
-            await botClient.AnswerCallbackQuery(callback.Id, cancellationToken: CancellationToken.None);
+            await botClient.AnswerCallbackQueryAsync(callback.Id);
             Console.WriteLine("Callback acknowledged.");
         }
         catch (Exception ex)
@@ -148,7 +145,6 @@ app.MapPost("/bot", async context =>
     }
     else if (update.Message != null && update.Message.Text != null)
     {
-        Console.WriteLine("Message branch hit");
         var chat = update.Message.Chat;
         var text = update.Message.Text.Trim();
         var chatId = chat.Id;
@@ -160,12 +156,12 @@ app.MapPost("/bot", async context =>
             if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
             {
                 awaitingOrderId[chatId] = registeredCompanyId;
-                await botClient.SendMessage(chatId, "What’s the Order ID?", cancellationToken: CancellationToken.None);
+                await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
             }
             else
             {
                 awaitingCompanyId[chatId] = true;
-                await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.", cancellationToken: CancellationToken.None);
+                await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
             }
             return;
         }
@@ -179,15 +175,15 @@ app.MapPost("/bot", async context =>
 
             await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-            await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!", cancellationToken: CancellationToken.None);
-            await botClient.SendMessage(chatId, "What’s the Order ID?", cancellationToken: CancellationToken.None);
+            await botClient.SendTextMessageAsync(chatId, $"Company ID '{companyId}' registered successfully!");
+            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
             return;
         }
 
         if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
         {
             var result = await QueryPaymentApiAsync(companyIdToUse, text);
-            await botClient.SendMessage(chatId, result, cancellationToken: CancellationToken.None);
+            await botClient.SendTextMessageAsync(chatId, result);
             return;
         }
 
@@ -202,13 +198,17 @@ app.MapPost("/bot", async context =>
                 }
             });
 
-            await botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: keyboard, cancellationToken: CancellationToken.None);
+            await botClient.SendTextMessageAsync(
+                chatId,
+                "What would you like to do?",
+                replyMarkup: keyboard
+            );
             return;
         }
     }
     else
     {
-        Console.WriteLine("Neither message nor callback handled");
+        Console.WriteLine("No message or callback query content.");
         return;
     }
 });
@@ -224,7 +224,7 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApiResponse>(json);
+        var result = System.Text.Json.JsonSerializer.Deserialize<ApiResponse>(json);
 
         if (result?.Data == null || result.Data.Count == 0)
         {
@@ -279,6 +279,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         return "Failed to retrieve payment status.";
     }
 }
+
+app.Run();
 
 public class ApiResponse
 {
