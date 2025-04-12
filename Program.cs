@@ -40,8 +40,8 @@ app.MapControllers();
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Urls.Add($"http://*:{port}");
 
-app.Run();
-
+// Optional test route
+app.MapGet("/", () => "✅ Telegram bot backend is running.");
 
 // Setup in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
@@ -265,6 +265,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
     }
 }
 
+app.Run();
+
 public class ApiResponse
 {
     public List<ApiData> Data { get; set; } = new();
@@ -277,3 +279,4 @@ public class ApiData
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
 }
+
