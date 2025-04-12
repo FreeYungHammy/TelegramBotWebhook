@@ -11,7 +11,6 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 using JsonSerializer = System.Text.Json.JsonSerializer; //to resolve ambiguous references 
 
@@ -19,8 +18,6 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Register required services
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 
 // Register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
@@ -33,7 +30,6 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 var app = builder.Build();
 
 app.UseHttpsRedirection();
-app.UseAuthorization();
 app.MapControllers();
 
 // Fix: Bind to Azure's required port
@@ -64,10 +60,18 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
         .ToDictionary(parts => long.Parse(parts[0]), parts => parts[1].Trim())
 );
 
+// === Set Webhook Automatically ===
+var botUrl = Environment.GetEnvironmentVariable("BOT_URL")
+             ?? throw new Exception("BOT_URL environment variable is not set.");
+
+// Set the webhook URL (This happens automatically at startup)
+var botClient = app.Services.GetRequiredService<TelegramBotClient>();
+await botClient.SetWebhook($"{botUrl}/api/bot");
+
 // === Webhook Entry Point ===
 app.MapPost("/api/bot", async context =>
 {
-    Console.WriteLine("Incoming request to /bot");
+    Console.WriteLine("Incoming request to /api/bot");
 
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
     Update? update;
