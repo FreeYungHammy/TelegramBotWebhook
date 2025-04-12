@@ -101,6 +101,14 @@ app.MapPost("/bot", async context =>
     if (update.CallbackQuery != null)
     {
         var callback = update.CallbackQuery;
+
+        if (callback.Message?.Chat == null)
+        {
+            Console.WriteLine("Callback message or chat is null.");
+            context.Response.StatusCode = 400;
+            return;
+        }
+
         var callbackChatId = callback.Message.Chat.Id;
         Console.WriteLine($"Callback received: {callback.Data}");
 
@@ -113,19 +121,19 @@ app.MapPost("/bot", async context =>
                 if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
                 {
                     awaitingOrderId[callbackChatId] = companyId;
-                    await botClient.SendTextMessageAsync(callbackChatId, "What’s the Order ID?");
+                    await botClient.SendMessage(callbackChatId, "What’s the Order ID?");
                 }
                 else
                 {
                     awaitingCompanyId[callbackChatId] = true;
-                    await botClient.SendTextMessageAsync(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
+                    await botClient.SendMessage(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
                 }
             }
             else if (callback.Data == "help_info")
             {
                 Console.WriteLine("Processing 'help_info'...");
 
-                await botClient.SendTextMessageAsync(callbackChatId,
+                await botClient.SendMessage(callbackChatId,
                     "*Help Guide*\n\n" +
                     "• Use `/paymentstatus` to start a payment status request.\n" +
                     "• Provide your Company ID and Order ID as prompted.\n" +
@@ -133,7 +141,7 @@ app.MapPost("/bot", async context =>
                     parseMode: ParseMode.Markdown);
             }
 
-            await botClient.AnswerCallbackQueryAsync(callback.Id);
+            await botClient.AnswerCallbackQuery(callback.Id);
             Console.WriteLine("Callback acknowledged.");
         }
         catch (Exception ex)
@@ -156,12 +164,12 @@ app.MapPost("/bot", async context =>
             if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
             {
                 awaitingOrderId[chatId] = registeredCompanyId;
-                await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
+                await botClient.SendMessage(chatId, "What’s the Order ID?");
             }
             else
             {
                 awaitingCompanyId[chatId] = true;
-                await botClient.SendTextMessageAsync(chatId, "Group not registered. Please reply with your Company ID to register.");
+                await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
             }
             return;
         }
@@ -175,15 +183,15 @@ app.MapPost("/bot", async context =>
 
             await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-            await botClient.SendTextMessageAsync(chatId, $"Company ID '{companyId}' registered successfully!");
-            await botClient.SendTextMessageAsync(chatId, "What’s the Order ID?");
+            await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
+            await botClient.SendMessage(chatId, "What’s the Order ID?");
             return;
         }
 
         if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
         {
             var result = await QueryPaymentApiAsync(companyIdToUse, text);
-            await botClient.SendTextMessageAsync(chatId, result);
+            await botClient.SendMessage(chatId, result);
             return;
         }
 
@@ -198,7 +206,7 @@ app.MapPost("/bot", async context =>
                 }
             });
 
-            await botClient.SendTextMessageAsync(
+            await botClient.SendMessage(
                 chatId,
                 "What would you like to do?",
                 replyMarkup: keyboard
@@ -224,7 +232,9 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
-        var result = System.Text.Json.JsonSerializer.Deserialize<ApiResponse>(json);
+        Console.WriteLine("API returned raw: " + json);
+
+        var result = JsonSerializer.Deserialize<ApiResponse>(json);
 
         if (result?.Data == null || result.Data.Count == 0)
         {
@@ -233,45 +243,14 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 
         var data = result.Data[0];
 
-        if (data.ReplyDesc.Contains("Error", StringComparison.OrdinalIgnoreCase))
-        {
-            string GetField(string label)
-            {
-                var match = Regex.Match(data.ReplyDesc, $"`{label}`\\s*=\\s*`([^`]*)`");
-                return match.Success ? match.Groups[1].Value.Trim().Split("]},")[0] : "";
-            }
-
-            var responseCode = GetField("ResponseCode");
-            var responseDesc = GetField("ResponseDescription");
-            var bankCode = GetField("BankCode");
-            var bankDesc = GetField("BankDescription");
-
-            var transactionId = "";
-            if (data.ReplyDesc.Contains("transactionId:"))
-            {
-                var parts = data.ReplyDesc.Split("transactionId:");
-                if (parts.Length > 1)
-                    transactionId = parts[1].Trim().Trim('`', '}', ']', ',', ' ');
-            }
-
-            return $"Order: {orderId}\n" +
-                   $"Date: {data.Trans_date}\n" +
-                   $"Transaction ID: {transactionId}\n" +
-                   $"Response Code: {responseCode}\n" +
-                   $"Response Description: {responseDesc}\n" +
-                   $"Bank Code: {bankCode}\n" +
-                   $"Bank Description: {bankDesc}\n" +
-                   $"Client: {data.Client_fullName}\n" +
-                   $"Email: {data.Client_email}";
-        }
-        else
-        {
-            return $"Order: {orderId}\n" +
-                   $"Date: {data.Trans_date}\n" +
-                   $"Status: {data.ReplyDesc}\n" +
-                   $"Client: {data.Client_fullName}\n" +
-                   $"Email: {data.Client_email}";
-        }
+        return $"Order: {orderId}\n" +
+               $"Date: {data.Trans_date}\n" +
+               $"Transaction ID: {data.TransactionId}\n" +
+               $"Response Code: {data.ReplyCode}\n" +
+               $"Response Description: {data.ReplyDesc}\n" +
+               $"Amount: {data.Amount} {data.Currency}\n" +
+               $"Client: {data.Client_fullName}\n" +
+               $"Email: {data.Client_email}";
     }
     catch (Exception e)
     {
@@ -284,13 +263,36 @@ app.Run();
 
 public class ApiResponse
 {
+    [JsonPropertyName("data")]
     public List<ApiData> Data { get; set; } = new();
 }
 
 public class ApiData
 {
+    [JsonPropertyName("replyDesc")]
     public string ReplyDesc { get; set; } = "";
+
+    [JsonPropertyName("trans_date")]
     public string Trans_date { get; set; } = "";
+
+    [JsonPropertyName("client_fullName")]
     public string Client_fullName { get; set; } = "";
+
+    [JsonPropertyName("client_email")]
     public string Client_email { get; set; } = "";
+
+    [JsonPropertyName("trans_id")]
+    public string TransactionId { get; set; } = "";
+
+    [JsonPropertyName("replyCode")]
+    public string ReplyCode { get; set; } = "";
+
+    [JsonPropertyName("merchantID")]
+    public string MerchantId { get; set; } = "";
+
+    [JsonPropertyName("trans_amount")]
+    public string Amount { get; set; } = "";
+
+    [JsonPropertyName("trans_currency")]
+    public string Currency { get; set; } = "";
 }
