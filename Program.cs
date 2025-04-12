@@ -41,7 +41,7 @@ var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Urls.Add($"http://*:{port}");
 
 // Optional test route
-app.MapGet("/", () => "✅ Telegram bot backend is running.");
+app.MapGet("/", () => "Telegram bot backend is running.");
 
 // Setup in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
@@ -132,7 +132,7 @@ app.MapPost("/bot", async context =>
 
     if (update.Message == null || update.Message.Text == null)
     {
-        Console.WriteLine("⚠️ No message or text content.");
+        Console.WriteLine("No message or text content.");
         return;
     }
 
@@ -140,7 +140,7 @@ app.MapPost("/bot", async context =>
     var text = update.Message.Text.Trim();
     var chatId = chat.Id;
     var date = update.Message.Date;
-    Console.WriteLine($"⏱️ Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
+    Console.WriteLine($"Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
 
     if (text.ToLower().Contains("/paymentstatus"))
     {
