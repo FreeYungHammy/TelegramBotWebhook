@@ -13,16 +13,16 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
-using JsonSerializer = System.Text.Json.JsonSerializer; //to resolve ambigious references 
+using JsonSerializer = System.Text.Json.JsonSerializer; //to resolve ambiguous references 
 
 var builder = WebApplication.CreateBuilder(args);
 
-// register required services
+// Register required services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// register TelegramBotClient
+// Register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
     var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
@@ -36,27 +36,27 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
-// fix: Bind to Azure's required port
+// Fix: Bind to Azure's required port
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Urls.Add($"http://*:{port}");
 
-// test route 
+// Test route 
 app.MapGet("/", () => "Telegram bot backend is running.");
 
-// in-memory state
+// In-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
 var awaitingCompanyId = new ConcurrentDictionary<long, bool>();
 
 // Azure expected file path
 string storageFilePath = Path.Combine("/home/site/wwwroot", "group_company_links.txt");
 
-// checking file exists
+// Checking file exists
 if (!File.Exists(storageFilePath))
 {
     File.Create(storageFilePath).Close();
 }
 
-// loading file data into memory
+// Loading file data into memory
 var groupCompanyMap = new ConcurrentDictionary<long, string>(
     File.ReadAllLines(storageFilePath)
         .Select(line => line.Split(','))
