@@ -102,126 +102,15 @@ app.MapPost("/api/bot", async context =>
         return;
     }
 
+    // Handling callback query
     if (update.CallbackQuery != null)
     {
-        var callback = update.CallbackQuery;
-
-        // Check if callback.Message and callback.Message.Chat are not null
-        if (callback.Message?.Chat == null)
-        {
-            Console.WriteLine("Callback message or chat is null.");
-            context.Response.StatusCode = 400;
-            return;
-        }
-
-        var callbackChatId = callback.Message.Chat.Id;
-        Console.WriteLine($"Callback received: {callback.Data}");
-
-        // Log callback data to ensure the correct callback is received
-        Console.WriteLine($"Callback Data: {callback.Data}");
-
-        try
-        {
-            if (callback.Data == "check_status")
-            {
-                Console.WriteLine("Processing 'check_status'...");
-
-                if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
-                {
-                    awaitingOrderId[callbackChatId] = companyId;
-                    await botClient.SendMessage(callbackChatId, "What’s the Order ID?");
-                }
-                else
-                {
-                    awaitingCompanyId[callbackChatId] = true;
-                    await botClient.SendMessage(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
-                }
-            }
-            else if (callback.Data == "help_info")
-            {
-                Console.WriteLine("Processing 'help_info'...");
-
-                await botClient.SendMessage(callbackChatId,
-                    "*Help Guide*\n\n" +
-                    "• Use `/paymentstatus` to start a payment status request.\n" +
-                    "• Provide your Company ID and Order ID as prompted.\n" +
-                    "• You can mention me anytime with @StatusPaymentBot.",
-                    parseMode: ParseMode.Markdown);
-            }
-
-            await botClient.AnswerCallbackQuery(callback.Id);
-            Console.WriteLine("Callback acknowledged.");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Error in callback handler: " + ex.Message);
-        }
-
-        return;
+        await HandleCallbackQuery(update.CallbackQuery, botClient);
     }
-
+    // Handling normal message input (like "/start" or "/paymentstatus")
     else if (update.Message != null && update.Message.Text != null)
     {
-        var chat = update.Message.Chat;
-        var text = update.Message.Text.Trim();
-        var chatId = chat.Id;
-        var date = update.Message.Date;
-        Console.WriteLine($"Message received at (UTC): {date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
-
-        if (text.ToLower().Contains("/paymentstatus"))
-        {
-            if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
-            {
-                awaitingOrderId[chatId] = registeredCompanyId;
-                await botClient.SendMessage(chatId, "What’s the Order ID?");
-            }
-            else
-            {
-                awaitingCompanyId[chatId] = true;
-                await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
-            }
-            return;
-        }
-
-        if (awaitingCompanyId.ContainsKey(chatId))
-        {
-            var companyId = text.Trim();
-            groupCompanyMap[chatId] = companyId;
-            awaitingCompanyId.TryRemove(chatId, out _);
-            awaitingOrderId[chatId] = companyId;
-
-            await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
-
-            await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
-            await botClient.SendMessage(chatId, "What’s the Order ID?");
-            return;
-        }
-
-        if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
-        {
-            var result = await QueryPaymentApiAsync(companyIdToUse, text);
-            await botClient.SendMessage(chatId, result);
-            return;
-        }
-
-        if (text.ToLower().Contains("/start") || text.Contains("@StatusPaymentBot"))
-        {
-            var keyboard = new InlineKeyboardMarkup(new[]
-            {
-                new[]
-                {
-                    InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
-                    InlineKeyboardButton.WithCallbackData("Help", "help_info")
-                }
-            });
-
-            await botClient.SendMessage(
-                chatId,
-                "What would you like to do?",
-                replyMarkup: keyboard
-            );
-            return;
-        }
+        await HandleMessage(update.Message, botClient);
     }
     else
     {
@@ -229,6 +118,102 @@ app.MapPost("/api/bot", async context =>
         return;
     }
 });
+
+// Handle callback query (button clicks)
+async Task HandleCallbackQuery(CallbackQuery callback, TelegramBotClient botClient)
+{
+    var callbackChatId = callback.Message.Chat.Id;
+    Console.WriteLine($"Callback received: {callback.Data}");
+
+    try
+    {
+        if (callback.Data == "check_status")
+        {
+            Console.WriteLine("Processing 'check_status'...");
+            await HandlePaymentStatusRequest(callbackChatId, botClient);
+        }
+        else if (callback.Data == "help_info")
+        {
+            Console.WriteLine("Processing 'help_info'...");
+            await HandleHelpRequest(callbackChatId, botClient);
+        }
+
+        await botClient.AnswerCallbackQuery(callback.Id);
+        Console.WriteLine("Callback acknowledged.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("Error in callback handler: " + ex.Message);
+    }
+}
+
+// Handle normal message input (like "/start" or "/paymentstatus")
+async Task HandleMessage(Message message, TelegramBotClient botClient)
+{
+    var chatId = message.Chat.Id;
+    var text = message.Text.Trim();
+
+    Console.WriteLine($"Message received at (UTC): {message.Date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
+
+    // Handle "/paymentstatus" command
+    if (text.ToLower().Contains("/paymentstatus"))
+    {
+        await HandlePaymentStatusRequest(chatId, botClient);
+    }
+    // Handle "/help" command
+    else if (text.ToLower().Contains("/help"))
+    {
+        await HandleHelpRequest(chatId, botClient);
+    }
+    else if (text.Contains("@StatusPaymentBot"))
+    {
+        // Send the inline keyboard on @ mention
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
+                InlineKeyboardButton.WithCallbackData("Help", "help_info")
+            }
+        });
+
+        await botClient.SendMessage(
+            chatId,
+            "What would you like to do?",
+            replyMarkup: keyboard
+        );
+    }
+}
+
+// This function simulates the "/paymentstatus" command logic
+async Task HandlePaymentStatusRequest(long chatId, TelegramBotClient botClient)
+{
+    Console.WriteLine("Simulating '/paymentstatus'...");
+
+    if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
+    {
+        awaitingOrderId[chatId] = registeredCompanyId;
+        await botClient.SendMessage(chatId, "What’s the Order ID?");
+    }
+    else
+    {
+        awaitingCompanyId[chatId] = true;
+        await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+    }
+}
+
+// This function simulates the "/help" command logic
+async Task HandleHelpRequest(long chatId, TelegramBotClient botClient)
+{
+    Console.WriteLine("Simulating '/help'...");
+
+    await botClient.SendMessage(chatId,
+        "*Help Guide*\n\n" +
+        "• Use `/paymentstatus` to start a payment status request.\n" +
+        "• Provide your Company ID and Order ID as prompted.\n" +
+        "• You can mention me anytime with @StatusPaymentBot.",
+        parseMode: ParseMode.Markdown);
+}
 
 // === API Helper ===
 async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
