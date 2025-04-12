@@ -102,31 +102,45 @@ app.MapPost("/bot", async context =>
     {
         var callback = update.CallbackQuery;
         var callbackChatId = callback.Message.Chat.Id;
+        Console.WriteLine($"Callback received: {callback.Data}");
 
-        if (callback.Data == "check_status")
+        try
         {
-            if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
+            if (callback.Data == "check_status")
             {
-                awaitingOrderId[callbackChatId] = companyId;
-                await botClient.SendMessage(callbackChatId, "What’s the Order ID?");
+                Console.WriteLine("Processing 'check_status'...");
+
+                if (groupCompanyMap.TryGetValue(callbackChatId, out var companyId))
+                {
+                    awaitingOrderId[callbackChatId] = companyId;
+                    await botClient.SendMessage(chatId: callbackChatId, text: "What’s the Order ID?");
+                }
+                else
+                {
+                    awaitingCompanyId[callbackChatId] = true;
+                    await botClient.SendMessage(chatId: callbackChatId, text: "Group not registered. Please reply with your Company ID to register.");
+                }
             }
-            else
+            else if (callback.Data == "help_info")
             {
-                awaitingCompanyId[callbackChatId] = true;
-                await botClient.SendMessage(callbackChatId, "Group not registered. Please reply with your Company ID to register.");
+                Console.WriteLine("Processing 'help_info'...");
+
+                await botClient.SendMessage(chatId: callbackChatId,
+                    text: "*Help Guide*\n\n" +
+                    "• Use `/paymentstatus` to start a payment status request.\n" +
+                    "• Provide your Company ID and Order ID as prompted.\n" +
+                    "• You can mention me anytime with @StatusPaymentBot.",
+                    parseMode: ParseMode.Markdown);
             }
+
+            await botClient.AnswerCallbackQuery(callback.Id);
+            Console.WriteLine("Callback acknowledged.");
         }
-        else if (callback.Data == "help_info")
+        catch (Exception ex)
         {
-            await botClient.SendMessage(callbackChatId,
-                "*Help Guide*\n\n" +
-                "• Use `/paymentstatus` to start a payment status request.\n" +
-                "• Provide your Company ID and Order ID as prompted.\n" +
-                "• You can mention me anytime with @StatusPaymentBot.",
-                parseMode: ParseMode.Markdown);
+            Console.WriteLine("Error in callback handler: " + ex.Message);
         }
 
-        await botClient.AnswerCallbackQuery(callback.Id);
         return;
     }
 
@@ -147,12 +161,12 @@ app.MapPost("/bot", async context =>
         if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
         {
             awaitingOrderId[chatId] = registeredCompanyId;
-            await botClient.SendMessage(chatId, "What’s the Order ID?");
+            await botClient.SendMessage(chatId: chatId, text: "What’s the Order ID?");
         }
         else
         {
             awaitingCompanyId[chatId] = true;
-            await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
+            await botClient.SendMessage(chatId: chatId, text: "Group not registered. Please reply with your Company ID to register.");
         }
         return;
     }
@@ -166,15 +180,15 @@ app.MapPost("/bot", async context =>
 
         await File.AppendAllTextAsync(storageFilePath, $"{chatId},{companyId}{Environment.NewLine}");
 
-        await botClient.SendMessage(chatId, $"Company ID '{companyId}' registered successfully!");
-        await botClient.SendMessage(chatId, "What’s the Order ID?");
+        await botClient.SendMessage(chatId: chatId, text: $"Company ID '{companyId}' registered successfully!");
+        await botClient.SendMessage(chatId: chatId, text: "What’s the Order ID?");
         return;
     }
 
     if (awaitingOrderId.TryRemove(chatId, out var companyIdToUse))
     {
         var result = await QueryPaymentApiAsync(companyIdToUse, text);
-        await botClient.SendMessage(chatId, result);
+        await botClient.SendMessage(chatId: chatId, text: result);
         return;
     }
 
@@ -190,8 +204,8 @@ app.MapPost("/bot", async context =>
         });
 
         await botClient.SendMessage(
-            chatId,
-            "What would you like to do?",
+            chatId: chatId,
+            text: "What would you like to do?",
             replyMarkup: keyboard
         );
         return;
@@ -279,4 +293,3 @@ public class ApiData
     public string Client_fullName { get; set; } = "";
     public string Client_email { get; set; } = "";
 }
-
