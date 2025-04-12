@@ -61,7 +61,7 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
 );
 
 // === Set Webhook Automatically ===
-var botUrl = Environment.GetEnvironmentVariable("BOT_URL")
+var botUrl = Environment.GetEnvironmentVariable("PUBLIC_URL")
              ?? throw new Exception("BOT_URL environment variable is not set.");
 
 // Set the webhook URL (This happens automatically at startup)
