@@ -13,16 +13,16 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
-using JsonSerializer = System.Text.Json.JsonSerializer; //to resolve ambigious references 
+using JsonSerializer = System.Text.Json.JsonSerializer; // Fix ambiguous reference
 
 var builder = WebApplication.CreateBuilder(args);
 
-// register required services
+// Register required services
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// register TelegramBotClient
+// Register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
     var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
@@ -36,27 +36,27 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
-// fix: Bind to Azure's required port
+// Bind to Azure's required port
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Urls.Add($"http://*:{port}");
 
-// test route 
+// Optional test route
 app.MapGet("/", () => "Telegram bot backend is running.");
 
-// in-memory state
+// Setup in-memory state
 var awaitingOrderId = new ConcurrentDictionary<long, string>();
 var awaitingCompanyId = new ConcurrentDictionary<long, bool>();
 
 // Azure expected file path
 string storageFilePath = Path.Combine("/home/site/wwwroot", "group_company_links.txt");
 
-// checking file exists
+// Ensure file exists
 if (!File.Exists(storageFilePath))
 {
     File.Create(storageFilePath).Close();
 }
 
-// loading file data into memory
+// Load file data into memory
 var groupCompanyMap = new ConcurrentDictionary<long, string>(
     File.ReadAllLines(storageFilePath)
         .Select(line => line.Split(','))
@@ -100,6 +100,7 @@ app.MapPost("/bot", async context =>
 
     if (update.CallbackQuery != null)
     {
+        Console.WriteLine("CallbackQuery branch hit");
         var callback = update.CallbackQuery;
         var callbackChatId = callback.Message.Chat.Id;
         Console.WriteLine($"Callback received: {callback.Data}");
@@ -145,6 +146,7 @@ app.MapPost("/bot", async context =>
     }
     else if (update.Message != null && update.Message.Text != null)
     {
+        Console.WriteLine("Message branch hit");
         var chat = update.Message.Chat;
         var text = update.Message.Text.Trim();
         var chatId = chat.Id;
@@ -208,7 +210,7 @@ app.MapPost("/bot", async context =>
     }
     else
     {
-        Console.WriteLine("No message or callback query content.");
+        Console.WriteLine("Neither message nor callback handled");
         return;
     }
 });
@@ -279,8 +281,6 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
         return "Failed to retrieve payment status.";
     }
 }
-
-app.Run();
 
 public class ApiResponse
 {
