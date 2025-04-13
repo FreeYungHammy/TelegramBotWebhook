@@ -80,7 +80,13 @@ var botUrl = Environment.GetEnvironmentVariable("PUBLIC_URL")
 
 // Set the webhook URL (This happens automatically at startup)
 var botClient = app.Services.GetRequiredService<TelegramBotClient>();
-await botClient.SetWebhook($"{botUrl}/api/bot");
+await botClient.SetWebhook(
+    url: $"{botUrl}/api/bot",
+    allowedUpdates: new[] {
+        UpdateType.Message,
+        UpdateType.CallbackQuery
+    }
+);
 logger.LogInformation("Webhook set to {WebhookUrl}", $"{botUrl}/api/bot");
 
 // === Webhook Entry Point ===
@@ -97,17 +103,34 @@ app.MapPost("/api/bot", async context =>
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("Raw JSON: {Json}", json); // Log raw JSON to see if Telegram is sending data
 
-        update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
+        // Update the JsonSerializerOptions to be more lenient
+        var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        });
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        };
+
+        update = JsonSerializer.Deserialize<Update>(json, options);
 
         if (update == null)
         {
             logger.LogWarning("Update deserialized as null.");
             context.Response.StatusCode = 400;
             return;
+        }
+
+        // Log detailed information about the update
+        logger.LogInformation("Update type: Message={HasMessage}, CallbackQuery={HasCallback}, EditedMessage={HasEditedMessage}, ChannelPost={HasChannelPost}",
+            update.Message != null,
+            update.CallbackQuery != null,
+            update.EditedMessage != null,
+            update.ChannelPost != null);
+
+        if (update.CallbackQuery != null)
+        {
+            logger.LogInformation("Callback data: {CallbackData}", update.CallbackQuery.Data);
         }
     }
     catch (Exception ex)
@@ -223,19 +246,19 @@ async Task HandleMessage(Message message, TelegramBotClient botClient)
     }
     else if (text.Contains("@StatusPaymentBot"))
     {
-        // Send the inline keyboard on @ mention
+        // Send the inline keyboard on @ mention with explicit parameter names
         var keyboard = new InlineKeyboardMarkup(new[]
         {
             new[]
             {
-                InlineKeyboardButton.WithCallbackData("Payment Status", "check_status"),
-                InlineKeyboardButton.WithCallbackData("Help", "help_info")
+                InlineKeyboardButton.WithCallbackData(text: "Payment Status", callbackData: "check_status"),
+                InlineKeyboardButton.WithCallbackData(text: "Help", callbackData: "help_info")
             }
         });
 
         await botClient.SendMessage(
-            chatId,
-            "What would you like to do?",
+            chatId: chatId,
+            text: "What would you like to do?",
             replyMarkup: keyboard
         );
     }
