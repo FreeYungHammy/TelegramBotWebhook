@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Register required services
 builder.Services.AddControllers();
 
+// Add proper logging
+builder.Services.AddLogging(logging =>
+{
+    logging.AddConsole();
+    logging.AddDebug();
+});
+
 // Register TelegramBotClient
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
@@ -28,6 +36,9 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 });
 
 var app = builder.Build();
+
+// Get logger
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
 app.UseHttpsRedirection();
 app.MapControllers();
@@ -49,6 +60,7 @@ string storageFilePath = Path.Combine("/home/site/wwwroot", "group_company_links
 // Checking file exists
 if (!File.Exists(storageFilePath))
 {
+    logger.LogInformation("Creating storage file at {FilePath}", storageFilePath);
     File.Create(storageFilePath).Close();
 }
 
@@ -60,6 +72,8 @@ var groupCompanyMap = new ConcurrentDictionary<long, string>(
         .ToDictionary(parts => long.Parse(parts[0]), parts => parts[1].Trim())
 );
 
+logger.LogInformation("Loaded {Count} group-company mappings from storage", groupCompanyMap.Count);
+
 // === Set Webhook Automatically ===
 var botUrl = Environment.GetEnvironmentVariable("PUBLIC_URL")
              ?? throw new Exception("PUBLIC_URL environment variable is not set.");
@@ -67,11 +81,12 @@ var botUrl = Environment.GetEnvironmentVariable("PUBLIC_URL")
 // Set the webhook URL (This happens automatically at startup)
 var botClient = app.Services.GetRequiredService<TelegramBotClient>();
 await botClient.SetWebhook($"{botUrl}/api/bot");
+logger.LogInformation("Webhook set to {WebhookUrl}", $"{botUrl}/api/bot");
 
 // === Webhook Entry Point ===
 app.MapPost("/api/bot", async context =>
 {
-    Console.WriteLine("Incoming request to /api/bot");
+    logger.LogInformation("Incoming request to /api/bot");
 
     var botClient = app.Services.GetRequiredService<TelegramBotClient>();
     Update? update;
@@ -80,7 +95,7 @@ app.MapPost("/api/bot", async context =>
     {
         using var reader = new StreamReader(context.Request.Body);
         var json = await reader.ReadToEndAsync();
-        Console.WriteLine("Raw JSON: " + json); // Log raw JSON to see if Telegram is sending data
+        logger.LogDebug("Raw JSON: {Json}", json); // Log raw JSON to see if Telegram is sending data
 
         update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
@@ -90,14 +105,14 @@ app.MapPost("/api/bot", async context =>
 
         if (update == null)
         {
-            Console.WriteLine("Update deserialized as null.");
+            logger.LogWarning("Update deserialized as null.");
             context.Response.StatusCode = 400;
             return;
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Deserialization failed: " + ex.Message);
+        logger.LogError(ex, "Deserialization failed");
         context.Response.StatusCode = 400;
         return;
     }
@@ -114,7 +129,7 @@ app.MapPost("/api/bot", async context =>
     }
     else
     {
-        Console.WriteLine("No message or callback query content.");
+        logger.LogInformation("No message or callback query content.");
         return;
     }
 });
@@ -122,28 +137,42 @@ app.MapPost("/api/bot", async context =>
 // Handle callback query (button clicks)
 async Task HandleCallbackQuery(CallbackQuery callback, TelegramBotClient botClient)
 {
-    var callbackChatId = callback.Message.Chat.Id;
-    Console.WriteLine($"Callback received: {callback.Data}");
+    var callbackChatId = callback.Message?.Chat.Id ?? 0;
+    logger.LogInformation("Callback received: {CallbackData} from Chat ID: {ChatId}", callback.Data, callbackChatId);
 
     try
     {
         if (callback.Data == "check_status")
         {
-            Console.WriteLine("Processing 'check_status'...");
+            logger.LogInformation("Processing 'check_status'...");
             await HandlePaymentStatusRequest(callbackChatId, botClient);
         }
         else if (callback.Data == "help_info")
         {
-            Console.WriteLine("Processing 'help_info'...");
+            logger.LogInformation("Processing 'help_info'...");
             await HandleHelpRequest(callbackChatId, botClient);
         }
 
+        // Important: Always acknowledge the callback
         await botClient.AnswerCallbackQuery(callback.Id);
-        Console.WriteLine("Callback acknowledged.");
+        logger.LogInformation("Callback acknowledged.");
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Error in callback handler: " + ex.Message);
+        logger.LogError(ex, "Error in callback handler");
+        // Try to send error message to user
+        try
+        {
+            if (callbackChatId != 0)
+            {
+                await botClient.SendMessage(callbackChatId,
+                    "Sorry, an error occurred processing your request.");
+            }
+        }
+        catch (Exception innerEx)
+        {
+            logger.LogError(innerEx, "Error sending error message to user");
+        }
     }
 }
 
@@ -151,9 +180,36 @@ async Task HandleCallbackQuery(CallbackQuery callback, TelegramBotClient botClie
 async Task HandleMessage(Message message, TelegramBotClient botClient)
 {
     var chatId = message.Chat.Id;
-    var text = message.Text.Trim();
+    var text = message.Text?.Trim() ?? string.Empty;
 
-    Console.WriteLine($"Message received at (UTC): {message.Date.ToUniversalTime():yyyy-MM-dd HH:mm:ss} from Chat ID: {chatId}");
+    logger.LogInformation("Message received at (UTC): {DateTime} from Chat ID: {ChatId}",
+        message.Date.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss"), chatId);
+
+    // Check if waiting for Order ID
+    if (awaitingOrderId.TryGetValue(chatId, out var companyId))
+    {
+        logger.LogInformation("Received Order ID input: {OrderId} for Company ID: {CompanyId}", text, companyId);
+        awaitingOrderId.TryRemove(chatId, out _);
+        var result = await QueryPaymentApiAsync(companyId, text);
+        await botClient.SendMessage(chatId, result);
+        return;
+    }
+
+    // Check if waiting for Company ID
+    if (awaitingCompanyId.TryGetValue(chatId, out _))
+    {
+        logger.LogInformation("Received Company ID registration: {CompanyId} for Chat ID: {ChatId}", text, chatId);
+        awaitingCompanyId.TryRemove(chatId, out _);
+        groupCompanyMap[chatId] = text;
+
+        // Save to persistent storage
+        File.WriteAllLines(storageFilePath,
+            groupCompanyMap.Select(pair => $"{pair.Key},{pair.Value}"));
+
+        logger.LogInformation("Updated storage file with new Company ID mapping");
+        await botClient.SendMessage(chatId, $"Group registered with Company ID: {text}");
+        return;
+    }
 
     // Handle "/paymentstatus" command
     if (text.ToLower().Contains("/paymentstatus"))
@@ -185,27 +241,30 @@ async Task HandleMessage(Message message, TelegramBotClient botClient)
     }
 }
 
-// This function simulates the "/paymentstatus" command logic
+// This function handles the "/paymentstatus" command logic
 async Task HandlePaymentStatusRequest(long chatId, TelegramBotClient botClient)
 {
-    Console.WriteLine("Simulating '/paymentstatus'...");
+    logger.LogInformation("Processing payment status request for Chat ID: {ChatId}", chatId);
 
     if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
     {
+        logger.LogInformation("Found registered Company ID: {CompanyId} for Chat ID: {ChatId}",
+            registeredCompanyId, chatId);
         awaitingOrderId[chatId] = registeredCompanyId;
-        await botClient.SendMessage(chatId, "What’s the Order ID?");
+        await botClient.SendMessage(chatId, "What's the Order ID?");
     }
     else
     {
+        logger.LogInformation("No registered Company ID found for Chat ID: {ChatId}", chatId);
         awaitingCompanyId[chatId] = true;
         await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
     }
 }
 
-// This function simulates the "/help" command logic
+// This function handles the "/help" command logic
 async Task HandleHelpRequest(long chatId, TelegramBotClient botClient)
 {
-    Console.WriteLine("Simulating '/help'...");
+    logger.LogInformation("Processing help request for Chat ID: {ChatId}", chatId);
 
     await botClient.SendMessage(chatId,
         "*Help Guide*\n\n" +
@@ -218,24 +277,31 @@ async Task HandleHelpRequest(long chatId, TelegramBotClient botClient)
 // === API Helper ===
 async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 {
+    logger.LogInformation("Querying payment API for Company ID: {CompanyId}, Order ID: {OrderId}",
+        companyId, orderId);
+
     try
     {
         using var client = new HttpClient();
         var url = $"https://process.highisk.com/member/getstatusBOT.asp?CompanyNum={companyId}&Order={orderId}";
+        logger.LogInformation("API URL: {Url}", url);
+
         var response = await client.GetAsync(url);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync();
-        Console.WriteLine("API returned raw: " + json);
+        logger.LogDebug("API returned raw: {Json}", json);
 
         var result = JsonSerializer.Deserialize<ApiResponse>(json);
 
         if (result?.Data == null || result.Data.Count == 0)
         {
+            logger.LogWarning("No data found for Order ID: {OrderId}", orderId);
             return $"Order {orderId}: No data found.";
         }
 
         var data = result.Data[0];
+        logger.LogInformation("Successfully retrieved payment status for Order ID: {OrderId}", orderId);
 
         return $"Order: {orderId}\n" +
                $"Date: {data.Trans_date}\n" +
@@ -248,7 +314,8 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
     }
     catch (Exception e)
     {
-        Console.WriteLine("API error: " + e.Message);
+        logger.LogError(e, "API error for Company ID: {CompanyId}, Order ID: {OrderId}",
+            companyId, orderId);
         return "Failed to retrieve payment status.";
     }
 }
