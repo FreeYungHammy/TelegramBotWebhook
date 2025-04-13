@@ -175,29 +175,26 @@ async Task HandleCallbackQuery(CallbackQuery callback, TelegramBotClient botClie
             logger.LogInformation("Processing 'help_info'...");
             await HandleHelpRequest(callbackChatId, botClient);
         }
+        else
+        {
+            logger.LogWarning("Unexpected callback data: {CallbackData}", callback.Data);
+            await botClient.SendMessage(callbackChatId, "Unknown action. Please try again.");
+        }
 
-        // Important: Always acknowledge the callback
+        // Always acknowledge the callback
         await botClient.AnswerCallbackQuery(callback.Id);
         logger.LogInformation("Callback acknowledged.");
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "Error in callback handler");
-        // Try to send error message to user
-        try
+        if (callbackChatId != 0)
         {
-            if (callbackChatId != 0)
-            {
-                await botClient.SendMessage(callbackChatId,
-                    "Sorry, an error occurred processing your request.");
-            }
-        }
-        catch (Exception innerEx)
-        {
-            logger.LogError(innerEx, "Error sending error message to user");
+            await botClient.SendMessage(callbackChatId, "Sorry, an error occurred processing your request.");
         }
     }
 }
+
 
 // Handle normal message input (like "/start" or "/paymentstatus")
 async Task HandleMessage(Message message, TelegramBotClient botClient)
@@ -246,22 +243,27 @@ async Task HandleMessage(Message message, TelegramBotClient botClient)
     }
     else if (text.Contains("@StatusPaymentBot"))
     {
-        // Send the inline keyboard on @ mention with explicit parameter names
+        // Define the inline keyboard
         var keyboard = new InlineKeyboardMarkup(new[]
         {
-            new[]
-            {
-                InlineKeyboardButton.WithCallbackData(text: "Payment Status", callbackData: "check_status"),
-                InlineKeyboardButton.WithCallbackData(text: "Help", callbackData: "help_info")
-            }
-        });
+        new[]
+        {
+            InlineKeyboardButton.WithCallbackData(text: "Payment Status", callbackData: "check_status"),
+            InlineKeyboardButton.WithCallbackData(text: "Help", callbackData: "help_info")
+        }
+    });
 
+        // Log the callback data for verification
+        logger.LogInformation("Inline keyboard created with callback data: 'check_status' and 'help_info'");
+
+        // Send the message with the inline keyboard
         await botClient.SendMessage(
             chatId: chatId,
             text: "What would you like to do?",
             replyMarkup: keyboard
         );
     }
+
 }
 
 // This function handles the "/paymentstatus" command logic
