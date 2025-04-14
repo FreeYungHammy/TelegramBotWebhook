@@ -28,7 +28,7 @@ builder.Services.AddLogging(logging =>
 builder.Services.AddSingleton<TelegramBotClient>(_ =>
 {
     var token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN")
-        ?? throw new Exception("Bot token not set.");
+        ?? throw new Exception("Bot token not set. ");
     return new TelegramBotClient(token);
 });
 
