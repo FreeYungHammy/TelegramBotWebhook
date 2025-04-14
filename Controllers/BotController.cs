@@ -62,6 +62,8 @@ public class BotController : ControllerBase
             return BadRequest();
         }
 
+        _logger.LogInformation("Deserialized Update Type: {Type}", update.Type);
+
         if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery == null)
         {
             _logger.LogWarning("Update type was CallbackQuery, but update.CallbackQuery is null. Raw JSON: {Json}", json);
@@ -79,7 +81,8 @@ public class BotController : ControllerBase
             if (_stateService.IsWaitingForCompanyId(chatId))
             {
                 _stateService.RegisterCompanyId(chatId, text);
-                await _botClient.SendMessage(chatId, $"Company ID '{text}' registered.");
+                _stateService.SetAwaitingOrderId(chatId, text); 
+                await _botClient.SendMessage(chatId, $"Company ID '{text}' registered. Now, please enter your Order ID.");
                 return Ok();
             }
 
