@@ -10,6 +10,7 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramBot_v2.Services;
+using Newtonsoft.Json.Converters;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -41,7 +42,13 @@ public class BotController : ControllerBase
         var json = await reader.ReadToEndAsync();
         _logger.LogDebug("Raw JSON: {Json}", json);
 
-        var update = JsonConvert.DeserializeObject<Update>(json);
+        var settings = new JsonSerializerSettings
+        {
+            DateParseHandling = DateParseHandling.None,
+            Converters = { new UnixDateTimeConverter() }
+        };
+
+        var update = JsonConvert.DeserializeObject<Update>(json, settings);
 
         if (update == null)
         {
