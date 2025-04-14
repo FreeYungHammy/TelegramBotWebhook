@@ -10,12 +10,11 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using JsonSerializer = System.Text.Json.JsonSerializer;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +34,7 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 
 var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
+
 
 app.UseHttpsRedirection();
 app.MapControllers();
@@ -91,12 +91,15 @@ app.MapPost("/api/bot", async context =>
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("Raw JSON: {Json}", json);
 
-        update = System.Text.Json.JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
+        var options = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             NumberHandling = JsonNumberHandling.AllowReadingFromString
-        });
+        };
+
+        update = JsonConvert.DeserializeObject<Update>(json);
 
         if (update == null)
         {
@@ -113,22 +116,34 @@ app.MapPost("/api/bot", async context =>
 
         if (update.CallbackQuery != null)
         {
-            await HandleCallbackQuery(update.CallbackQuery, botClient);
+            logger.LogInformation("Callback data: {CallbackData}", update.CallbackQuery.Data);
+
         }
-        else if (update.Message != null && update.Message.Text != null)
+
+        logger.LogDebug("Raw Update Dump: {Raw}", JsonSerializer.Serialize(update, new JsonSerializerOptions
         {
-            await HandleMessage(update.Message, botClient);
-        }
-        else
-        {
-            logger.LogInformation("No message or callback query content.");
-            return;
-        }
+            WriteIndented = true
+        }));
+
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "Deserialization failed");
         context.Response.StatusCode = 400;
+        return;
+    }
+
+    if (update.CallbackQuery != null)
+    {
+        await HandleCallbackQuery(update.CallbackQuery, botClient);
+    }
+    else if (update.Message != null && update.Message.Text != null)
+    {
+        await HandleMessage(update.Message, botClient);
+    }
+    else
+    {
+        logger.LogInformation("No message or callback query content.");
         return;
     }
 });
@@ -222,13 +237,13 @@ InlineKeyboardMarkup BuildKeyboardForUser(long chatId)
     {
         buttons.Add(new List<InlineKeyboardButton>
         {
-            InlineKeyboardButton.WithCallbackData("🧾 Payment Status", "check_status")
+            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status")
         });
     }
 
     buttons.Add(new List<InlineKeyboardButton>
     {
-        InlineKeyboardButton.WithCallbackData("❓ Help", "help_info")
+        InlineKeyboardButton.WithCallbackData("Help", "help_info")
     });
 
     return new InlineKeyboardMarkup(buttons);
@@ -254,7 +269,7 @@ async Task HandleHelpRequest(long chatId, TelegramBotClient botClient)
 {
     await botClient.SendMessage(chatId,
         "*Help Guide*\n\n" +
-        "• Use `/paymentstatus` to start a payment status request.\n" +
+        "• Use /paymentstatus to start a payment status request.\n" +
         "• Provide your Company ID and Order ID as prompted.\n" +
         "• You can mention me anytime with @StatusPaymentBot.",
         parseMode: ParseMode.Markdown);
