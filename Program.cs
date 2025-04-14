@@ -91,15 +91,12 @@ app.MapPost("/api/bot", async context =>
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("Raw JSON: {Json}", json);
 
-        var settings = new Newtonsoft.Json.JsonSerializerSettings
+        update = System.Text.Json.JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
         {
-            DateParseHandling = DateParseHandling.None,
-            Converters = new List<Newtonsoft.Json.JsonConverter> { new UnixDateTimeConverter() },
-            MissingMemberHandling = MissingMemberHandling.Ignore,
-            NullValueHandling = NullValueHandling.Ignore
-        };
-
-        update = Newtonsoft.Json.JsonConvert.DeserializeObject<Update>(json, settings);
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        });
 
         if (update == null)
         {
@@ -225,13 +222,13 @@ InlineKeyboardMarkup BuildKeyboardForUser(long chatId)
     {
         buttons.Add(new List<InlineKeyboardButton>
         {
-            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status")
+            InlineKeyboardButton.WithCallbackData("🧾 Payment Status", "check_status")
         });
     }
 
     buttons.Add(new List<InlineKeyboardButton>
     {
-        InlineKeyboardButton.WithCallbackData("Help", "help_info")
+        InlineKeyboardButton.WithCallbackData("❓ Help", "help_info")
     });
 
     return new InlineKeyboardMarkup(buttons);
@@ -299,37 +296,6 @@ async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
 }
 
 app.Run();
-
-public class UnixDateTimeConverter : Newtonsoft.Json.JsonConverter
-{
-    public override bool CanConvert(Type objectType)
-    {
-        return objectType == typeof(DateTime) || objectType == typeof(DateTime?);
-    }
-
-    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, Newtonsoft.Json.JsonSerializer serializer)
-    {
-        if (reader.TokenType == JsonToken.Integer)
-        {
-            var seconds = Convert.ToInt64(reader.Value);
-            return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
-        }
-        throw new JsonSerializationException($"Unexpected token parsing date. Expected Integer, got {reader.TokenType}.");
-    }
-
-    public override void WriteJson(JsonWriter writer, object? value, Newtonsoft.Json.JsonSerializer serializer)
-    {
-        if (value is DateTime dateTime)
-        {
-            var seconds = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
-            writer.WriteValue(seconds);
-        }
-        else
-        {
-            throw new JsonSerializationException("Expected DateTime object value.");
-        }
-    }
-}
 
 public class ApiResponse
 {
