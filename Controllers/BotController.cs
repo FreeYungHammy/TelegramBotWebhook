@@ -45,7 +45,10 @@ public class BotController : ControllerBase
         var settings = new JsonSerializerSettings
         {
             DateParseHandling = DateParseHandling.None,
-            Converters = { new UnixDateTimeConverter() },
+            Converters = {
+            new UnixDateTimeConverter(),
+            new StringEnumConverter() 
+            },
             MissingMemberHandling = MissingMemberHandling.Ignore,
             Error = (sender, args) =>
             {
@@ -53,6 +56,7 @@ public class BotController : ControllerBase
                 args.ErrorContext.Handled = true;
             }
         };
+
 
         var update = JsonConvert.DeserializeObject<Update>(json, settings);
 
@@ -133,8 +137,8 @@ public class BotController : ControllerBase
                 {
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData("Check Payment Status", "check_status"),
-                        InlineKeyboardButton.WithCallbackData("Help", "help_info")
+                        InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
+                        InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
                     }
                 });
 
@@ -148,7 +152,7 @@ public class BotController : ControllerBase
 
             _logger.LogInformation("Callback query received from {ChatId}: {Data}", chatId, callback.Data);
 
-            if (callback.Data == "check_status")
+            if (callback.Data == "checkstatus")
             {
                 var companyId = _stateService.GetCompanyId(chatId);
                 if (companyId != null)
@@ -162,7 +166,7 @@ public class BotController : ControllerBase
                     await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
                 }
             }
-            else if (callback.Data == "help_info")
+            else if (callback.Data == "helpinfo")
             {
                 await _botClient.SendMessage(chatId,
                     "*Help Guide*\n\n" +
