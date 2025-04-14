@@ -10,11 +10,12 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using JsonSerializer = System.Text.Json.JsonSerializer;
-using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,7 +35,6 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 
 var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
-
 
 app.UseHttpsRedirection();
 app.MapControllers();
@@ -91,15 +91,15 @@ app.MapPost("/api/bot", async context =>
         var json = await reader.ReadToEndAsync();
         logger.LogDebug("Raw JSON: {Json}", json);
 
-        var options = new JsonSerializerOptions
+        var settings = new Newtonsoft.Json.JsonSerializerSettings
         {
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            NumberHandling = JsonNumberHandling.AllowReadingFromString
+            DateParseHandling = DateParseHandling.None,
+            Converters = new List<Newtonsoft.Json.JsonConverter> { new UnixDateTimeConverter() },
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+            NullValueHandling = NullValueHandling.Ignore
         };
 
-        update = JsonConvert.DeserializeObject<Update>(json);
+        update = Newtonsoft.Json.JsonConvert.DeserializeObject<Update>(json, settings);
 
         if (update == null)
         {
@@ -117,14 +117,12 @@ app.MapPost("/api/bot", async context =>
         if (update.CallbackQuery != null)
         {
             logger.LogInformation("Callback data: {CallbackData}", update.CallbackQuery.Data);
-
         }
 
         logger.LogDebug("Raw Update Dump: {Raw}", JsonSerializer.Serialize(update, new JsonSerializerOptions
         {
             WriteIndented = true
         }));
-
     }
     catch (Exception ex)
     {
@@ -135,11 +133,11 @@ app.MapPost("/api/bot", async context =>
 
     if (update.CallbackQuery != null)
     {
-        await HandleCallbackQuery(update.CallbackQuery, botClient);
+        await botClient.SendMessage(update.CallbackQuery.Message.Chat.Id, $"Callback received: {update.CallbackQuery.Data}");
     }
     else if (update.Message != null && update.Message.Text != null)
     {
-        await HandleMessage(update.Message, botClient);
+        await botClient.SendMessage(update.Message.Chat.Id, $"Message received: {update.Message.Text}");
     }
     else
     {
@@ -148,169 +146,38 @@ app.MapPost("/api/bot", async context =>
     }
 });
 
-// === Callback Handler ===
-async Task HandleCallbackQuery(CallbackQuery callback, TelegramBotClient botClient)
-{
-    var callbackChatId = callback.Message?.Chat.Id ?? 0;
-    logger.LogInformation("Callback received: {CallbackData} from Chat ID: {ChatId}", callback.Data, callbackChatId);
+app.Run();
 
-    try
+public class UnixDateTimeConverter : Newtonsoft.Json.JsonConverter
+{
+    public override bool CanConvert(Type objectType)
     {
-        if (callback.Data == "check_status")
+        return objectType == typeof(DateTime) || objectType == typeof(DateTime?);
+    }
+
+    public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, Newtonsoft.Json.JsonSerializer serializer)
+    {
+        if (reader.TokenType == JsonToken.Integer)
         {
-            await HandlePaymentStatusRequest(callbackChatId, botClient);
+            var seconds = Convert.ToInt64(reader.Value);
+            return DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime;
         }
-        else if (callback.Data == "help_info")
+        throw new JsonSerializationException($"Unexpected token parsing date. Expected Integer, got {reader.TokenType}.");
+    }
+
+    public override void WriteJson(JsonWriter writer, object? value, Newtonsoft.Json.JsonSerializer serializer)
+    {
+        if (value is DateTime dateTime)
         {
-            await HandleHelpRequest(callbackChatId, botClient);
+            var seconds = new DateTimeOffset(dateTime).ToUnixTimeSeconds();
+            writer.WriteValue(seconds);
         }
         else
         {
-            logger.LogWarning("Unexpected callback data: {CallbackData}", callback.Data);
-            await botClient.SendMessage(callbackChatId, "Unknown action. Please try again.");
-        }
-
-        await botClient.AnswerCallbackQuery(callback.Id);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error in callback handler");
-        if (callbackChatId != 0)
-        {
-            await botClient.SendMessage(callbackChatId, "Sorry, an error occurred processing your request.");
+            throw new JsonSerializationException("Expected DateTime object value.");
         }
     }
 }
-
-// === Message Handler ===
-async Task HandleMessage(Message message, TelegramBotClient botClient)
-{
-    var chatId = message.Chat.Id;
-    var text = message.Text?.Trim() ?? "";
-
-    logger.LogInformation("Message received from Chat ID: {ChatId} - Text: {Text}", chatId, text);
-
-    if (awaitingOrderId.TryGetValue(chatId, out var companyId))
-    {
-        awaitingOrderId.TryRemove(chatId, out _);
-        var result = await QueryPaymentApiAsync(companyId, text);
-        await botClient.SendMessage(chatId, result);
-        return;
-    }
-
-    if (awaitingCompanyId.ContainsKey(chatId))
-    {
-        awaitingCompanyId.TryRemove(chatId, out _);
-
-        if (!groupCompanyMap.ContainsKey(chatId))
-        {
-            groupCompanyMap[chatId] = text;
-            File.AppendAllText(storageFilePath, $"{chatId},{text}{Environment.NewLine}");
-            logger.LogInformation("Appended {ChatId},{Text} to file", chatId, text);
-        }
-
-        await botClient.SendMessage(chatId, $"Group registered with Company ID: {text}");
-        return;
-    }
-
-    if (text.ToLower().Contains("/paymentstatus"))
-    {
-        await HandlePaymentStatusRequest(chatId, botClient);
-    }
-    else if (text.ToLower().Contains("/help"))
-    {
-        await HandleHelpRequest(chatId, botClient);
-    }
-    else if (text.Contains("@StatusPaymentBot"))
-    {
-        var keyboard = BuildKeyboardForUser(chatId);
-        await botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: keyboard);
-    }
-}
-
-// === Dynamic Button Builder ===
-InlineKeyboardMarkup BuildKeyboardForUser(long chatId)
-{
-    var buttons = new List<List<InlineKeyboardButton>>();
-
-    if (groupCompanyMap.ContainsKey(chatId))
-    {
-        buttons.Add(new List<InlineKeyboardButton>
-        {
-            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status")
-        });
-    }
-
-    buttons.Add(new List<InlineKeyboardButton>
-    {
-        InlineKeyboardButton.WithCallbackData("Help", "help_info")
-    });
-
-    return new InlineKeyboardMarkup(buttons);
-}
-
-// === Payment Handler ===
-async Task HandlePaymentStatusRequest(long chatId, TelegramBotClient botClient)
-{
-    if (groupCompanyMap.TryGetValue(chatId, out var registeredCompanyId))
-    {
-        awaitingOrderId[chatId] = registeredCompanyId;
-        await botClient.SendMessage(chatId, "What's the Order ID?");
-    }
-    else
-    {
-        awaitingCompanyId[chatId] = true;
-        await botClient.SendMessage(chatId, "Group not registered. Please reply with your Company ID to register.");
-    }
-}
-
-// === Help Handler ===
-async Task HandleHelpRequest(long chatId, TelegramBotClient botClient)
-{
-    await botClient.SendMessage(chatId,
-        "*Help Guide*\n\n" +
-        "• Use `/paymentstatus` to start a payment status request.\n" +
-        "• Provide your Company ID and Order ID as prompted.\n" +
-        "• You can mention me anytime with @StatusPaymentBot.",
-        parseMode: ParseMode.Markdown);
-}
-
-// === API Call ===
-async Task<string> QueryPaymentApiAsync(string companyId, string orderId)
-{
-    try
-    {
-        using var client = new HttpClient();
-        var url = $"https://process.highisk.com/member/getstatusBOT.asp?CompanyNum={companyId}&Order={orderId}";
-        var response = await client.GetAsync(url);
-        response.EnsureSuccessStatusCode();
-
-        var json = await response.Content.ReadAsStringAsync();
-        var result = JsonSerializer.Deserialize<ApiResponse>(json);
-
-        if (result?.Data == null || result.Data.Count == 0)
-        {
-            return $"Order {orderId}: No data found.";
-        }
-
-        var data = result.Data[0];
-
-        return $"Order: {orderId}\n" +
-               $"Date: {data.Trans_date}\n" +
-               $"Transaction ID: {data.TransactionId}\n" +
-               $"Response Code: {data.ReplyCode}\n" +
-               $"Response Description: {data.ReplyDesc}\n" +
-               $"Amount: {data.Amount} {data.Currency}\n" +
-               $"Client: {data.Client_fullName}\n" +
-               $"Email: {data.Client_email}";
-    }
-    catch (Exception e)
-    {
-        return "Failed to retrieve payment status: " + e.Message;
-    }
-}
-
-app.Run();
 
 public class ApiResponse
 {
