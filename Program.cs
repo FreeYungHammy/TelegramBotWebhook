@@ -34,6 +34,7 @@ builder.Services.AddSingleton<TelegramBotClient>(_ =>
 var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();
 
+
 app.UseHttpsRedirection();
 app.MapControllers();
 
@@ -115,7 +116,14 @@ app.MapPost("/api/bot", async context =>
         if (update.CallbackQuery != null)
         {
             logger.LogInformation("Callback data: {CallbackData}", update.CallbackQuery.Data);
+
         }
+
+        logger.LogDebug("Raw Update Dump: {Raw}", JsonSerializer.Serialize(update, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        }));
+
     }
     catch (Exception ex)
     {
