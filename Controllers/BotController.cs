@@ -45,7 +45,13 @@ public class BotController : ControllerBase
         var settings = new JsonSerializerSettings
         {
             DateParseHandling = DateParseHandling.None,
-            Converters = { new UnixDateTimeConverter() }
+            Converters = { new UnixDateTimeConverter() },
+            MissingMemberHandling = MissingMemberHandling.Ignore,
+            Error = (sender, args) =>
+            {
+                _logger.LogWarning("Deserialization error: {ErrorMessage}", args.ErrorContext.Error.Message);
+                args.ErrorContext.Handled = true;
+            }
         };
 
         var update = JsonConvert.DeserializeObject<Update>(json, settings);
