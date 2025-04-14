@@ -56,6 +56,11 @@ public class BotController : ControllerBase
             return BadRequest();
         }
 
+        if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery == null)
+        {
+            _logger.LogWarning("Update type was CallbackQuery, but update.CallbackQuery is null. Raw JSON: {Json}", json);
+        }
+
         if (update.Type == UpdateType.Message && update.Message?.Text != null)
         {
             var message = update.Message;
