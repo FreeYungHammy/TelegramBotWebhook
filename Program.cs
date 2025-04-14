@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using JsonSerializer = System.Text.Json.JsonSerializer;
+using Newtonsoft.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -98,7 +99,7 @@ app.MapPost("/api/bot", async context =>
             NumberHandling = JsonNumberHandling.AllowReadingFromString
         };
 
-        update = JsonSerializer.Deserialize<Update>(json, options);
+        update = JsonConvert.DeserializeObject<Update>(json);
 
         if (update == null)
         {
@@ -236,13 +237,13 @@ InlineKeyboardMarkup BuildKeyboardForUser(long chatId)
     {
         buttons.Add(new List<InlineKeyboardButton>
         {
-            InlineKeyboardButton.WithCallbackData("🧾 Payment Status", "check_status")
+            InlineKeyboardButton.WithCallbackData("Payment Status", "check_status")
         });
     }
 
     buttons.Add(new List<InlineKeyboardButton>
     {
-        InlineKeyboardButton.WithCallbackData("❓ Help", "help_info")
+        InlineKeyboardButton.WithCallbackData("Help", "help_info")
     });
 
     return new InlineKeyboardMarkup(buttons);
