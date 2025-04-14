@@ -77,6 +77,8 @@ await botClient.SetWebhook(
 );
 logger.LogInformation("Webhook set to {WebhookUrl}", $"{botUrl}/api/bot");
 
+
+
 // === Webhook Entry Point ===
 app.MapPost("/api/bot", async context =>
 {
@@ -99,7 +101,12 @@ app.MapPost("/api/bot", async context =>
             NumberHandling = JsonNumberHandling.AllowReadingFromString
         };
 
-        update = JsonConvert.DeserializeObject<Update>(json);
+        update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        });
 
         if (update == null)
         {
