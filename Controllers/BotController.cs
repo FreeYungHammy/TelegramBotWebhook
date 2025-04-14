@@ -1,16 +1,14 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System.IO;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramBot_v2.Services;
-using Newtonsoft.Json.Converters;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -45,10 +43,7 @@ public class BotController : ControllerBase
         var settings = new JsonSerializerSettings
         {
             DateParseHandling = DateParseHandling.None,
-            Converters = {
-            new UnixDateTimeConverter(),
-            new StringEnumConverter() 
-            },
+            Converters = { new UnixDateTimeConverter() },
             MissingMemberHandling = MissingMemberHandling.Ignore,
             Error = (sender, args) =>
             {
@@ -56,7 +51,6 @@ public class BotController : ControllerBase
                 args.ErrorContext.Handled = true;
             }
         };
-
 
         var update = JsonConvert.DeserializeObject<Update>(json, settings);
 
@@ -66,19 +60,43 @@ public class BotController : ControllerBase
             return BadRequest();
         }
 
-        _logger.LogInformation("Deserialized Update Type: {Type}", update.Type);
-
-        if (update.Type == UpdateType.Unknown)
+        // === Handle Callback Query ===
+        if (update.CallbackQuery != null)
         {
-            _logger.LogWarning("Update type was Unknown. Logging full JSON for inspection:\n{Json}", json);
+            var callback = update.CallbackQuery;
+            var chatId = callback.Message?.Chat.Id ?? 0;
+
+            _logger.LogInformation("Callback query received from {ChatId}: {Data}", chatId, callback.Data);
+
+            if (callback.Data == "checkstatus")
+            {
+                var companyId = _stateService.GetCompanyId(chatId);
+                if (companyId != null)
+                {
+                    _stateService.SetAwaitingOrderId(chatId, companyId);
+                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
+                }
+                else
+                {
+                    _stateService.SetAwaitingCompanyId(chatId);
+                    await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
+                }
+            }
+            else if (callback.Data == "helpinfo")
+            {
+                await _botClient.SendMessage(chatId,
+                    "*Help Guide*\n\n" +
+                    "• Use `/paymentstatus` to check the status of a payment.\n" +
+                    "• You’ll be prompted for your Company ID and Order ID.\n" +
+                    "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
+                    parseMode: ParseMode.Markdown);
+            }
+
+            await _botClient.AnswerCallbackQuery(callback.Id);
         }
 
-        if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery == null)
-        {
-            _logger.LogWarning("Update type was CallbackQuery, but update.CallbackQuery is null. Raw JSON: {Json}", json);
-        }
-
-        if (update.Type == UpdateType.Message && update.Message?.Text != null)
+        // === Handle Message Text ===
+        else if (update.Message?.Text != null)
         {
             var message = update.Message;
             var chatId = message.Chat.Id;
@@ -86,16 +104,16 @@ public class BotController : ControllerBase
 
             _logger.LogInformation("Received message from {ChatId}: {Text}", chatId, text);
 
-            // Handle company registration
+            // Company Registration
             if (_stateService.IsWaitingForCompanyId(chatId))
             {
                 _stateService.RegisterCompanyId(chatId, text);
-                _stateService.SetAwaitingOrderId(chatId, text); 
+                _stateService.SetAwaitingOrderId(chatId, text);
                 await _botClient.SendMessage(chatId, $"Company ID '{text}' registered. Now, please enter your Order ID.");
                 return Ok();
             }
 
-            // Handle order ID input
+            // Order ID Input
             if (_stateService.IsWaitingForOrderId(chatId))
             {
                 var companyId = _stateService.GetCompanyId(chatId);
@@ -112,7 +130,7 @@ public class BotController : ControllerBase
                 return Ok();
             }
 
-            // Handle commands
+            // Command Handlers
             if (text.StartsWith("/paymentstatus"))
             {
                 var companyId = _stateService.GetCompanyId(chatId);
@@ -150,38 +168,12 @@ public class BotController : ControllerBase
                 await _botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: keyboard);
             }
         }
-        else if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery != null)
+
+        // === Unknown Update Type ===
+        else
         {
-            var callback = update.CallbackQuery;
-            var chatId = callback.Message?.Chat.Id ?? 0;
-
-            _logger.LogInformation("Callback query received from {ChatId}: {Data}", chatId, callback.Data);
-
-            if (callback.Data == "checkstatus")
-            {
-                var companyId = _stateService.GetCompanyId(chatId);
-                if (companyId != null)
-                {
-                    _stateService.SetAwaitingOrderId(chatId, companyId);
-                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
-                }
-                else
-                {
-                    _stateService.SetAwaitingCompanyId(chatId);
-                    await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
-                }
-            }
-            else if (callback.Data == "helpinfo")
-            {
-                await _botClient.SendMessage(chatId,
-                    "*Help Guide*\n\n" +
-                    "• Use `/paymentstatus` to check the status of a payment.\n" +
-                    "• You’ll be prompted for your Company ID and Order ID.\n" +
-                    "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
-                    parseMode: ParseMode.Markdown);
-            }
-
-            await _botClient.AnswerCallbackQuery(callback.Id);
+            _logger.LogWarning("Unrecognized update type. Logging raw JSON...");
+            _logger.LogWarning(json);
         }
 
         return Ok();
