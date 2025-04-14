@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -40,12 +41,7 @@ public class BotController : ControllerBase
         var json = await reader.ReadToEndAsync();
         _logger.LogDebug("Raw JSON: {Json}", json);
 
-        var update = JsonSerializer.Deserialize<Update>(json, new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-            NumberHandling = JsonNumberHandling.AllowReadingFromString
-        });
+        var update = JsonConvert.DeserializeObject<Update>(json);
 
         if (update == null)
         {
