@@ -68,6 +68,11 @@ public class BotController : ControllerBase
 
         _logger.LogInformation("Deserialized Update Type: {Type}", update.Type);
 
+        if (update.Type == UpdateType.Unknown)
+        {
+            _logger.LogWarning("Update type was Unknown. Logging full JSON for inspection:\n{Json}", json);
+        }
+
         if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery == null)
         {
             _logger.LogWarning("Update type was CallbackQuery, but update.CallbackQuery is null. Raw JSON: {Json}", json);
