@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using System.Text.RegularExpressions;
 
 public class PaymentStatusService
 {
@@ -38,36 +39,32 @@ public class PaymentStatusService
                 ? parsedDate.ToString("yyyy-MM-dd HH:mm:ss")
                 : data.Trans_date;
 
-            // Try to extract the GUID Transaction ID from ReplyDesc
-            string extractedGuid = "";
-            var guidMatch = System.Text.RegularExpressions.Regex.Match(data.ReplyDesc ?? "", @"transactionId:([a-f0-9\-]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            if (guidMatch.Success)
-                extractedGuid = guidMatch.Groups[1].Value;
+            // Extract embedded GUID Transaction ID
+            string extractedGuid = Regex.Match(data.ReplyDesc ?? "", @"transactionId:([a-f0-9\-]+)", RegexOptions.IgnoreCase).Groups[1].Value;
 
-            // Split out internal details from reply description
-            var simplifiedReply = data.ReplyDesc;
-
+            // Extract clean reply data
             string extraInfo = "";
-            var respCodeMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"ResponseCode[`]?\s*=\s*`?(\d+)`?");
-            var respDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"ResponseDescription[`]?\s*=\s*`?([^,\n\r]+)`?");
-            var bankCodeMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"BankCode[`]?\s*=\s*`?(\d+)`?");
-            var bankDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"BankDescription[`]?\s*=\s*`?([^\]\},\n\r]+)`?");
+            var respCode = Regex.Match(data.ReplyDesc, @"ResponseCode[`]?\s*=\s*`?(\d+)`?");
+            var respDesc = Regex.Match(data.ReplyDesc, @"ResponseDescription[`]?\s*=\s*`?([^,\]\n\r]+)`?");
+            var bankCode = Regex.Match(data.ReplyDesc, @"BankCode[`]?\s*=\s*`?(\d+)`?");
+            var bankDesc = Regex.Match(data.ReplyDesc, @"BankDescription[`]?\s*=\s*`?([^\]\},\n\r]+)`?");
 
-            if (respCodeMatch.Success || respDescMatch.Success || bankCodeMatch.Success || bankDescMatch.Success)
+            if (!string.IsNullOrWhiteSpace(respCode.Value) || !string.IsNullOrWhiteSpace(respDesc.Value) ||
+                !string.IsNullOrWhiteSpace(bankCode.Value) || !string.IsNullOrWhiteSpace(bankDesc.Value))
             {
-                extraInfo = $"Error: The transaction has failed with: ResponseCode = {respCodeMatch.Groups[1].Value}.\n" +
-                            $"ResponseDescription = {respDescMatch.Groups[1].Value}\n" +
-                            $"BankCode = {bankCodeMatch.Groups[1].Value}\n" +
-                            $"BankDescription = {bankDescMatch.Groups[1].Value}";
+                extraInfo = "Error: The transaction has failed with: " +
+                            (respCode.Success ? $"ResponseCode = {respCode.Groups[1].Value}.\n" : "") +
+                            (respDesc.Success ? $"ResponseDescription = {respDesc.Groups[1].Value}\n" : "") +
+                            (bankCode.Success ? $"BankCode = {bankCode.Groups[1].Value}\n" : "") +
+                            (bankDesc.Success ? $"BankDescription = {bankDesc.Groups[1].Value}\n" : "");
             }
 
             return
                 $"Order: {orderId}\n" +
-                (string.IsNullOrEmpty(extractedGuid) ? "" : $"TransactionID: {extractedGuid}\n\n") +
-                $"Date: {formattedDate}\n" +
-                $"Transaction ID: {data.TransactionId}\n" +
+                (!string.IsNullOrEmpty(extractedGuid) ? $"TransactionID: {extractedGuid}\n\n" : "") +
+                $"Date: {formattedDate}\n\n" +
                 $"Response Code: {data.ReplyCode}\n" +
-                (string.IsNullOrWhiteSpace(extraInfo) ? $"Response Description: {data.ReplyDesc}\n" : extraInfo + "\n") +
+                (!string.IsNullOrWhiteSpace(extraInfo) ? extraInfo : $"Response Description: {data.ReplyDesc}\n") +
                 $"Amount: {data.Amount} {data.Currency}\n" +
                 $"Client: {data.Client_fullName}\n" +
                 $"Email: {data.Client_email}";
