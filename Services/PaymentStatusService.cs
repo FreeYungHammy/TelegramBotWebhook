@@ -49,9 +49,9 @@ public class PaymentStatusService
 
             string extraInfo = "";
             var respCodeMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"ResponseCode[`]?\s*=\s*`?(\d+)`?");
-            var respDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"ResponseDescription[`]?\s*=\s*`?([^,\n]+)`?");
+            var respDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"ResponseDescription[`]?\s*=\s*`?([^,\n\r]+)`?");
             var bankCodeMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"BankCode[`]?\s*=\s*`?(\d+)`?");
-            var bankDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"BankDescription[`]?\s*=\s*`?([^\n`]+)`?");
+            var bankDescMatch = System.Text.RegularExpressions.Regex.Match(simplifiedReply, @"BankDescription[`]?\s*=\s*`?([^\]\},\n\r]+)`?");
 
             if (respCodeMatch.Success || respDescMatch.Success || bankCodeMatch.Success || bankDescMatch.Success)
             {
