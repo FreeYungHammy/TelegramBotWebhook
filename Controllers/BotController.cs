@@ -98,6 +98,11 @@ public class BotController : ControllerBase
                     }
                     else
                     {
+                        if (text.ToLower().Contains("sean"))
+                        {
+                            await _botClient.SendMessage(chatId, "Very funny haha. Try entering a real Order# now.");
+                        }
+
                         var retryButtons = new InlineKeyboardMarkup(new[]
                         {
                             new[]
@@ -117,7 +122,6 @@ public class BotController : ControllerBase
 
                 return Ok();
             }
-
 
             if (text.StartsWith("/paymentstatus"))
             {
@@ -163,17 +167,17 @@ public class BotController : ControllerBase
         }
         else if (json.Contains("\"callback_query\""))
         {
-            var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\{\\\"id\\\":(-?\\d+)");
+            var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\\"id\\\":(-?\\d+)");
             var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
-            var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\{\\\"id\\\":\\\"(.*?)\\\"");
+            var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\\"id\\\":\\\"(.*?)\\\"");
 
             if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success)
             {
                 long chatId = long.Parse(chatIdMatch.Groups[1].Value);
                 string callbackData = dataMatch.Groups[1].Value;
                 string callbackId = callbackIdMatch.Groups[1].Value;
-                await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
 
+                await _botClient.AnswerCallbackQuery(callbackId);
                 _logger.LogInformation("Callback data received manually parsed: {Data}", callbackData);
 
                 if (callbackData == "checkstatus")
@@ -207,11 +211,11 @@ public class BotController : ControllerBase
 
                     if (result.Contains("Operational"))
                     {
-                        await Task.Delay(1000);
+                        await Task.Delay(1200);
                         await _botClient.SendMessage(chatId, "Processing Services: Fully Operational");
-                        await Task.Delay(1000);
+                        await Task.Delay(1500);
                         await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
-                        await Task.Delay(1000);
+                        await Task.Delay(1200);
                         await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
                     }
                 }
@@ -223,7 +227,7 @@ public class BotController : ControllerBase
                 else if (callbackData == "cancel_order")
                 {
                     _stateService.ClearAwaitingOrderId(chatId);
-                    await _botClient.SendMessage(chatId, "No problem! You can always send @NetsellerSupportBot if you would like to check again.");
+                    await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
                     await Task.Delay(2000);
                     await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
                     await Task.Delay(3000);
@@ -241,7 +245,6 @@ public class BotController : ControllerBase
 
                     await _botClient.SendMessage(chatId, "Select the method you'd like to use to blacklist a user:", replyMarkup: blacklistOptions);
                 }
-
             }
             else
             {
