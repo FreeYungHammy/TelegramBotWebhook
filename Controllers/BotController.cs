@@ -2,7 +2,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using System.IO;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Telegram.Bot;
@@ -19,17 +18,20 @@ public class BotController : ControllerBase
     private readonly ILogger<BotController> _logger;
     private readonly TelegramBotClient _botClient;
     private readonly PaymentStatusService _paymentService;
+    private readonly ServerStatusPingService _pingService;
     private readonly StateService _stateService;
 
     public BotController(
         ILogger<BotController> logger,
         TelegramBotClient botClient,
         PaymentStatusService paymentService,
+        ServerStatusPingService pingService,
         StateService stateService)
     {
         _logger = logger;
         _botClient = botClient;
         _paymentService = paymentService;
+        _pingService = pingService;
         _stateService = stateService;
     }
 
@@ -117,12 +119,7 @@ public class BotController : ControllerBase
             }
             else if (text.StartsWith("/help"))
             {
-                await _botClient.SendMessage(chatId,
-                    "*Help Guide*\n\n" +
-                    "• Use `/paymentstatus` to check the status of a payment.\n" +
-                    "• You’ll be prompted for your Company ID and Order ID.\n" +
-                    "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
-                    parseMode: ParseMode.Markdown);
+                await SendHelpMessage(chatId);
             }
             else if (text.Contains("@StatusPaymentBot"))
             {
@@ -132,6 +129,10 @@ public class BotController : ControllerBase
                     {
                         InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
                         InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("Ping Server", "pingserver")
                     }
                 });
 
@@ -145,47 +146,9 @@ public class BotController : ControllerBase
 
             _logger.LogInformation("Callback query received from {ChatId}: {Data}", chatId, callback.Data);
 
-            if (callback.Data == "checkstatus")
+            switch (callback.Data)
             {
-                var companyId = _stateService.GetCompanyId(chatId);
-                if (companyId != null)
-                {
-                    _stateService.SetAwaitingOrderId(chatId, companyId);
-                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
-                }
-                else
-                {
-                    _stateService.SetAwaitingCompanyId(chatId);
-                    await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
-                }
-            }
-            else if (callback.Data == "helpinfo")
-            {
-                await _botClient.SendMessage(chatId,
-                    "*Help Guide*\n\n" +
-                    "• Use `/paymentstatus` to check the status of a payment.\n" +
-                    "• You’ll be prompted for your Company ID and Order ID.\n" +
-                    "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
-                    parseMode: ParseMode.Markdown);
-            }
-
-            await _botClient.AnswerCallbackQuery(callback.Id);
-        }
-        else if (json.Contains("\"callback_query\""))
-        {
-            _logger.LogWarning("Unrecognized update type. Logging raw JSON...");
-            _logger.LogWarning(json);
-
-            // fallback parsing logic
-            try
-            {
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-                var callbackData = root.GetProperty("callback_query").GetProperty("data").GetString();
-                var chatId = root.GetProperty("callback_query").GetProperty("message").GetProperty("chat").GetProperty("id").GetInt64();
-
-                if (callbackData == "checkstatus")
-                {
+                case "checkstatus":
                     var companyId = _stateService.GetCompanyId(chatId);
                     if (companyId != null)
                     {
@@ -197,23 +160,37 @@ public class BotController : ControllerBase
                         _stateService.SetAwaitingCompanyId(chatId);
                         await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
                     }
-                }
-                else if (callbackData == "helpinfo")
-                {
-                    await _botClient.SendMessage(chatId,
-                        "*Help Guide*\n\n" +
-                        "• Use `/paymentstatus` to check the status of a payment.\n" +
-                        "• You’ll be prompted for your Company ID and Order ID.\n" +
-                        "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
-                        parseMode: ParseMode.Markdown);
-                }
+                    break;
+
+                case "helpinfo":
+                    await SendHelpMessage(chatId);
+                    break;
+
+                case "pingserver":
+                    var pingStatus = await _pingService.PingServerAsync();
+                    await _botClient.SendMessage(chatId, pingStatus);
+                    break;
+
+                default:
+                    _logger.LogWarning("Unknown callback data: {Data}", callback.Data);
+                    await _botClient.SendMessage(chatId, "Unknown option. Please try again.");
+                    break;
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Fallback JSON parsing failed");
-            }
+
+            await _botClient.AnswerCallbackQuery(callback.Id);
         }
 
         return Ok();
+    }
+
+    private async Task SendHelpMessage(long chatId)
+    {
+        await _botClient.SendMessage(chatId,
+            "*Help Guide*\n\n" +
+            "• Use `/paymentstatus` to check the status of a payment.\n" +
+            "• You’ll be prompted for your Company ID and Order ID.\n" +
+            "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.\n" +
+            "• Use `Ping Server` to check current server status.",
+            parseMode: ParseMode.Markdown);
     }
 }

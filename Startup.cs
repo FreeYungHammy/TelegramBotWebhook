@@ -19,15 +19,15 @@ public class Startup
 
     public void ConfigureServices(IServiceCollection services)
     {
-        services.AddControllers();
-
         services.AddLogging(logging =>
         {
             logging.AddConsole();
             logging.AddDebug();
         });
 
+        services.AddControllers();
         services.AddHttpClient<PaymentStatusService>();
+        services.AddHttpClient<ServerStatusPingService>();
 
         services.AddSingleton<TelegramBotClient>(_ =>
         {
