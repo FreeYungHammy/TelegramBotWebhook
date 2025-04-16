@@ -16,7 +16,7 @@ namespace TelegramBot_v2.Services
             _logger = logger;
         }
 
-        public async Task<string> PingServerAsync()
+        public async Task<string> PingAsync()
         {
             var url = "https://process.netsellerpay.com/ping.asp";
             _logger.LogInformation("Pinging server at {Url}", url);
@@ -30,13 +30,12 @@ namespace TelegramBot_v2.Services
                 }
                 else
                 {
-                    _logger.LogWarning("Non-success status code: {Code}", response.StatusCode);
-                    return "⚠*Server offline.* Contact *Cyberplumber* immediately to resolve.";
+                    return "⚠*Server offline.* Contact Cyberplumber immediately to resolve.";
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error pinging server");
+                _logger.LogError(ex, "Ping to server failed.");
                 return "*Ping failed.* Please try again later.";
             }
         }
