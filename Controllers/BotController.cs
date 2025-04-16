@@ -208,7 +208,7 @@ public class BotController : ControllerBase
                 else if (callbackData == "cancel_order")
                 {
                     _stateService.ClearAwaitingOrderId(chatId);
-                    await _botClient.SendMessage(chatId, "No problem! You can always check a payment later with /paymentstatus.");
+                    await _botClient.SendMessage(chatId, "No problem! You can always send @StatusPaymentBot if you would like to check again. \nOr you could go bug Sean about it... Your choice");
                 }
 
             }
