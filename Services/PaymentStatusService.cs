@@ -30,7 +30,7 @@ public class PaymentStatusService
             var apiResponse = JsonSerializer.Deserialize<ApiResponse>(content);
 
             if (apiResponse?.Data == null || apiResponse.Data.Count == 0)
-                return (false, $"No data found for orderID: {orderId}");
+                return (false, $"No data found for Order#: {orderId}");
 
             var data = apiResponse.Data[0];
 
@@ -60,7 +60,7 @@ public class PaymentStatusService
             }
 
             string formattedResponse =
-                $"Order: {orderId}\n" +
+                $"Order#: {orderId}\n" +
                 (!string.IsNullOrEmpty(extractedGuid) ? $"TransactionID: {extractedGuid}\n\n" : "") +
                 $"Date: {formattedDate}\n\n" +
                 $"Response Code: {data.ReplyCode}\n" +

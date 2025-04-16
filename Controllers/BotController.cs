@@ -80,7 +80,7 @@ public class BotController : ControllerBase
             {
                 _stateService.RegisterCompanyId(chatId, text);
                 _stateService.SetAwaitingOrderId(chatId, text);
-                await _botClient.SendMessage(chatId, $"Company ID '{text}' registered. Now, please enter your Order ID.");
+                await _botClient.SendMessage(chatId, $"Company# '{text}' registered. Now, please enter your Order#.");
                 return Ok();
             }
 
@@ -107,12 +107,12 @@ public class BotController : ControllerBase
                             }
                         });
 
-                        await _botClient.SendMessage(chatId, "Would you like to try entering the Order ID again?", replyMarkup: retryButtons);
+                        await _botClient.SendMessage(chatId, "Would you like to try entering the Order# again?", replyMarkup: retryButtons);
                     }
                 }
                 else
                 {
-                    await _botClient.SendMessage(chatId, "No company ID found. Please register first.");
+                    await _botClient.SendMessage(chatId, "No Company# found. Please register first.");
                 }
 
                 return Ok();
@@ -125,12 +125,12 @@ public class BotController : ControllerBase
                 if (companyId != null)
                 {
                     _stateService.SetAwaitingOrderId(chatId, companyId);
-                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
+                    await _botClient.SendMessage(chatId, "Please enter your Order#.");
                 }
                 else
                 {
                     _stateService.SetAwaitingCompanyId(chatId);
-                    await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
+                    await _botClient.SendMessage(chatId, "Please enter your Company# to register.");
                 }
             }
             else if (text.StartsWith("/help"))
@@ -138,8 +138,8 @@ public class BotController : ControllerBase
                 await _botClient.SendMessage(chatId,
                     "*Help Guide*\n\n" +
                     "• Use `/paymentstatus` to check the status of a payment.\n" +
-                    "• You’ll be prompted for your Company ID and Order ID.\n" +
-                    "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
+                    "• You’ll be prompted for your Company# and Order#.\n" +
+                    "• Mention the bot (@StatusPaymentBot) to trigger.",
                     parseMode: ParseMode.Markdown);
             }
             else if (text.Contains("@StatusPaymentBot"))
@@ -178,12 +178,12 @@ public class BotController : ControllerBase
                     if (companyId != null)
                     {
                         _stateService.SetAwaitingOrderId(chatId, companyId);
-                        await _botClient.SendMessage(chatId, "Please enter your Order ID.");
+                        await _botClient.SendMessage(chatId, "Please enter your Order#.");
                     }
                     else
                     {
                         _stateService.SetAwaitingCompanyId(chatId);
-                        await _botClient.SendMessage(chatId, "Please enter your Company ID to register.");
+                        await _botClient.SendMessage(chatId, "Please enter your Company# to register.");
                     }
                 }
                 else if (callbackData == "helpinfo")
@@ -191,8 +191,8 @@ public class BotController : ControllerBase
                     await _botClient.SendMessage(chatId,
                         "*Help Guide*\n\n" +
                         "• Use `/paymentstatus` to check the status of a payment.\n" +
-                        "• You’ll be prompted for your Company ID and Order ID.\n" +
-                        "• Mention the bot (@StatusPaymentBot) to trigger interactive buttons.",
+                        "• You’ll be prompted for your Company# and Order#.\n" +
+                        "• Mention the bot (@StatusPaymentBot) to trigger.",
                         parseMode: ParseMode.Markdown);
                 }
                 else if (callbackData == "serverstatus")
@@ -203,7 +203,7 @@ public class BotController : ControllerBase
                 else if (callbackData == "retry_order")
                 {
                     _stateService.SetAwaitingOrderId(chatId, _stateService.GetCompanyId(chatId));
-                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
+                    await _botClient.SendMessage(chatId, "Please enter your Order#.");
                 }
                 else if (callbackData == "cancel_order")
                 {
