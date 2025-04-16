@@ -98,7 +98,7 @@ public class BotController : ControllerBase
                     }
                     else
                     {
-                        await _botClient.SendMessage(chatId, "❌ Invalid Order ID. Please try again.");
+                        await _botClient.SendMessage(chatId, "Invalid Order ID. Please try again.");
                     }
                 }
                 else

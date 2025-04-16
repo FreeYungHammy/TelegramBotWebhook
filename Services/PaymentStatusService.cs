@@ -30,7 +30,7 @@ public class PaymentStatusService
             var apiResponse = JsonSerializer.Deserialize<ApiResponse>(content);
 
             if (apiResponse?.Data == null || apiResponse.Data.Count == 0)
-                return (false, $"No data found for orderID: {orderId} \nPlease enter a valid Order ID:");
+                return (false, $"No data found for orderID: {orderId}");
 
             var data = apiResponse.Data[0];
 
