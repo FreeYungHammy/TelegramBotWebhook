@@ -68,6 +68,84 @@ public class BotController : ControllerBase
 
         _logger.LogInformation("Deserialized Update Type: {Type}", update.Type);
 
+        if (update.CallbackQuery != null)
+        {
+            var chatId = update.CallbackQuery.Message?.Chat.Id ?? 0;
+            var callbackData = update.CallbackQuery.Data;
+            var callbackId = update.CallbackQuery.Id;
+
+            await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
+            _logger.LogInformation("Callback data received: {Data}", callbackData);
+
+            if (callbackData == "checkstatus")
+            {
+                var companyId = _stateService.GetCompanyId(chatId);
+                if (companyId != null)
+                {
+                    _stateService.SetAwaitingOrderId(chatId, companyId);
+                    await _botClient.SendMessage(chatId, "Please enter your Order#.");
+                }
+                else
+                {
+                    _stateService.SetAwaitingCompanyId(chatId);
+                    await _botClient.SendMessage(chatId, "Please enter your Company# to register.");
+                }
+            }
+            else if (callbackData == "helpinfo")
+            {
+                await _botClient.SendMessage(chatId,
+                    "*Help Guide*\n\n" +
+                    "• Use `/paymentstatus` to check the status of a payment.\n" +
+                    "• You’ll be prompted for your Company# and Order#.\n" +
+                    "• Mention the bot (@NetsellerSupportBot) to trigger.",
+                    parseMode: ParseMode.Markdown);
+            }
+            else if (callbackData == "serverstatus")
+            {
+                await _botClient.SendMessage(chatId, "Checking...");
+                await Task.Delay(2000);
+                var result = await _serverStatusService.PingAsync();
+
+                if (result.Contains("Operational"))
+                {
+                    await Task.Delay(1200);
+                    await _botClient.SendMessage(chatId, "Processing Services: Fully Operational");
+                    await Task.Delay(1500);
+                    await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
+                    await Task.Delay(1200);
+                    await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
+                }
+            }
+            else if (callbackData == "retry_order")
+            {
+                _stateService.SetAwaitingOrderId(chatId, _stateService.GetCompanyId(chatId));
+                await _botClient.SendMessage(chatId, "Please enter your Order#.");
+            }
+            else if (callbackData == "cancel_order")
+            {
+                _stateService.ClearAwaitingOrderId(chatId);
+                await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
+                await Task.Delay(2000);
+                await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
+                await Task.Delay(3000);
+                await _botClient.SendMessage(chatId, "Your choice.");
+            }
+            else if (callbackData == "blacklist_menu")
+            {
+                var blacklistOptions = new InlineKeyboardMarkup(new[]
+                {
+                    new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
+                    new[] { InlineKeyboardButton.WithCallbackData("Email", "blacklist_email") },
+                    new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
+                    new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") }
+                });
+
+                await _botClient.SendMessage(chatId, "Select the method you'd like to use to blacklist a user:", replyMarkup: blacklistOptions);
+            }
+
+            return Ok();
+        }
+
         if (update.Type == UpdateType.Message && update.Message?.Text != null)
         {
             var message = update.Message;
@@ -100,7 +178,7 @@ public class BotController : ControllerBase
                     {
                         if (text.ToLower().Contains("sean"))
                         {
-                            await _botClient.SendMessage(chatId, "Very funny haha. Try entering a real Order# now.");
+                            await _botClient.SendMessage(chatId, "Very funny. Try entering a real Order# now.");
                         }
 
                         var retryButtons = new InlineKeyboardMarkup(new[]
@@ -163,94 +241,6 @@ public class BotController : ControllerBase
                 });
 
                 await _botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: keyboard);
-            }
-        }
-        else if (json.Contains("\"callback_query\""))
-        {
-            var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\\"id\\\":(-?\\d+)");
-            var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
-            var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\\"id\\\":\\\"(.*?)\\\"");
-
-            if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success)
-            {
-                long chatId = long.Parse(chatIdMatch.Groups[1].Value);
-                string callbackData = dataMatch.Groups[1].Value;
-                string callbackId = callbackIdMatch.Groups[1].Value;
-
-                await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
-
-                _logger.LogInformation("Callback data received manually parsed: {Data}", callbackData);
-
-                if (callbackData == "checkstatus")
-                {
-                    var companyId = _stateService.GetCompanyId(chatId);
-                    if (companyId != null)
-                    {
-                        _stateService.SetAwaitingOrderId(chatId, companyId);
-                        await _botClient.SendMessage(chatId, "Please enter your Order#.");
-                    }
-                    else
-                    {
-                        _stateService.SetAwaitingCompanyId(chatId);
-                        await _botClient.SendMessage(chatId, "Please enter your Company# to register.");
-                    }
-                }
-                else if (callbackData == "helpinfo")
-                {
-                    await _botClient.SendMessage(chatId,
-                        "*Help Guide*\n\n" +
-                        "• Use `/paymentstatus` to check the status of a payment.\n" +
-                        "• You’ll be prompted for your Company# and Order#.\n" +
-                        "• Mention the bot (@NetsellerSupportBot) to trigger.",
-                        parseMode: ParseMode.Markdown);
-                }
-                else if (callbackData == "serverstatus")
-                {
-                    var check = await _botClient.SendMessage(chatId, "Checking...");
-                    await Task.Delay(2000);
-                    var result = await _serverStatusService.PingAsync();
-
-                    if (result.Contains("Operational"))
-                    {
-                        await Task.Delay(1200);
-                        await _botClient.SendMessage(chatId, "Processing Services: Fully Operational");
-                        await Task.Delay(1500);
-                        await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
-                        await Task.Delay(1200);
-                        await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
-                    }
-                }
-                else if (callbackData == "retry_order")
-                {
-                    _stateService.SetAwaitingOrderId(chatId, _stateService.GetCompanyId(chatId));
-                    await _botClient.SendMessage(chatId, "Please enter your Order#.");
-                }
-                else if (callbackData == "cancel_order")
-                {
-                    _stateService.ClearAwaitingOrderId(chatId);
-                    await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
-                    await Task.Delay(2000);
-                    await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
-                    await Task.Delay(3000);
-                    await _botClient.SendMessage(chatId, "Your choice.");
-                }
-                else if (callbackData == "blacklist_menu")
-                {
-                    var blacklistOptions = new InlineKeyboardMarkup(new[]
-                    {
-                        new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
-                        new[] { InlineKeyboardButton.WithCallbackData("Email", "blacklist_email") },
-                        new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
-                        new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") }
-                    });
-
-                    await _botClient.SendMessage(chatId, "Select the method you'd like to use to blacklist a user:", replyMarkup: blacklistOptions);
-                }
-            }
-            else
-            {
-                _logger.LogWarning("Unrecognized update type. Logging raw JSON...");
-                _logger.LogWarning(json);
             }
         }
 
