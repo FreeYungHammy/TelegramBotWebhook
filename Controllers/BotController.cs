@@ -94,19 +94,30 @@ public class BotController : ControllerBase
 
                     if (found)
                     {
-                        _stateService.ClearAwaitingOrderId(chatId); // only clear if data was valid
+                        _stateService.ClearAwaitingOrderId(chatId);
                     }
                     else
                     {
-                        await _botClient.SendMessage(chatId, "Invalid Order ID. Please try again.");
+                        var retryButtons = new InlineKeyboardMarkup(new[]
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData("Yes", "retry_order"),
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_order")
+                            }
+                        });
+
+                        await _botClient.SendMessage(chatId, "Would you like to try entering the Order ID again?", replyMarkup: retryButtons);
                     }
                 }
                 else
                 {
                     await _botClient.SendMessage(chatId, "No company ID found. Please register first.");
                 }
+
                 return Ok();
             }
+
 
             if (text.StartsWith("/paymentstatus"))
             {
@@ -189,6 +200,17 @@ public class BotController : ControllerBase
                     var result = await _serverStatusService.PingAsync();
                     await _botClient.SendMessage(chatId, result);
                 }
+                else if (callbackData == "retry_order")
+                {
+                    _stateService.SetAwaitingOrderId(chatId, _stateService.GetCompanyId(chatId));
+                    await _botClient.SendMessage(chatId, "Please enter your Order ID.");
+                }
+                else if (callbackData == "cancel_order")
+                {
+                    _stateService.ClearAwaitingOrderId(chatId);
+                    await _botClient.SendMessage(chatId, "No problem! You can always check a payment later with /paymentstatus.");
+                }
+
             }
             else
             {
