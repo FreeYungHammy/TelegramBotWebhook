@@ -17,7 +17,7 @@ public class PaymentStatusService
         _logger = logger;
     }
 
-    public async Task<string> QueryPaymentStatusAsync(string companyId, string orderId)
+    public async Task<(bool found, string response)> QueryPaymentStatusAsync(string companyId, string orderId)
     {
         var url = $"https://process.highisk.com/member/getstatusBOT.asp?CompanyNum={companyId}&Order={orderId}";
         _logger.LogInformation("Querying API at {Url}", url);
@@ -30,7 +30,7 @@ public class PaymentStatusService
             var apiResponse = JsonSerializer.Deserialize<ApiResponse>(content);
 
             if (apiResponse?.Data == null || apiResponse.Data.Count == 0)
-                return $"Order {orderId}: No data found.";
+                return (false, $"No data found for orderID: {orderId} \nPlease enter a valid Order ID:");
 
             var data = apiResponse.Data[0];
 
@@ -59,7 +59,7 @@ public class PaymentStatusService
                             (bankDesc.Success ? $"BankDescription = {bankDesc.Groups[1].Value}\n" : "");
             }
 
-            return
+            string formattedResponse =
                 $"Order: {orderId}\n" +
                 (!string.IsNullOrEmpty(extractedGuid) ? $"TransactionID: {extractedGuid}\n\n" : "") +
                 $"Date: {formattedDate}\n\n" +
@@ -68,11 +68,13 @@ public class PaymentStatusService
                 $"Amount: {data.Amount} {data.Currency}\n" +
                 $"Client: {data.Client_fullName}\n" +
                 $"Email: {data.Client_email}";
+
+            return (true, formattedResponse);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to retrieve payment status");
-            return "Failed to retrieve payment status: " + ex.Message;
+            return (false, "Failed to retrieve payment status: " + ex.Message);
         }
     }
 }

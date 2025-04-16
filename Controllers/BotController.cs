@@ -89,9 +89,17 @@ public class BotController : ControllerBase
                 var companyId = _stateService.GetCompanyId(chatId);
                 if (companyId != null)
                 {
-                    _stateService.ClearAwaitingOrderId(chatId);
-                    var result = await _paymentService.QueryPaymentStatusAsync(companyId, text);
+                    var (found, result) = await _paymentService.QueryPaymentStatusAsync(companyId, text);
                     await _botClient.SendMessage(chatId, result);
+
+                    if (found)
+                    {
+                        _stateService.ClearAwaitingOrderId(chatId); // only clear if data was valid
+                    }
+                    else
+                    {
+                        await _botClient.SendMessage(chatId, "❌ Invalid Order ID. Please try again.");
+                    }
                 }
                 else
                 {

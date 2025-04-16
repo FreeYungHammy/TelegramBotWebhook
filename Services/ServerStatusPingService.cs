@@ -26,11 +26,11 @@ namespace TelegramBot_v2.Services
                 var response = await _httpClient.GetAsync(url);
                 if (response.IsSuccessStatusCode)
                 {
-                    return "*Services Operational*";
+                    return "Server Status: Services Operational";
                 }
                 else
                 {
-                    return "*Server offline.* Contact Cyberplumber immediately to resolve.";
+                    return "Server Status: Server offline. Contact Cyberplumber immediately to resolve.";
                 }
             }
             catch (Exception ex)
