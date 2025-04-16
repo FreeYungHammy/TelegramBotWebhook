@@ -177,7 +177,8 @@ public class BotController : ControllerBase
                 string callbackData = dataMatch.Groups[1].Value;
                 string callbackId = callbackIdMatch.Groups[1].Value;
 
-                await _botClient.AnswerCallbackQuery(callbackId);
+                await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
+
                 _logger.LogInformation("Callback data received manually parsed: {Data}", callbackData);
 
                 if (callbackData == "checkstatus")
