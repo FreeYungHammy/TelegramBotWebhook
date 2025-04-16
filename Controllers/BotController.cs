@@ -153,7 +153,8 @@ public class BotController : ControllerBase
                     },
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus")
+                        InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus"),
+                        InlineKeyboardButton.WithCallbackData("Blacklist", "blacklist_menu")
                     }
                 });
 
@@ -164,11 +165,14 @@ public class BotController : ControllerBase
         {
             var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\{\\\"id\\\":(-?\\d+)");
             var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
+            var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\{\\\"id\\\":\\\"(.*?)\\\"");
 
-            if (chatIdMatch.Success && dataMatch.Success)
+            if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success)
             {
                 long chatId = long.Parse(chatIdMatch.Groups[1].Value);
                 string callbackData = dataMatch.Groups[1].Value;
+                string callbackId = callbackIdMatch.Groups[1].Value;
+                await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
 
                 _logger.LogInformation("Callback data received manually parsed: {Data}", callbackData);
 
@@ -203,10 +207,12 @@ public class BotController : ControllerBase
 
                     if (result.Contains("Operational"))
                     {
-                        await _botClient.SendMessage(chatId,
-                            "Processing Services: Fully Operational\n" +
-                            "Report Services: Fully Operational\n" +
-                            "Administration Portals: Fully Operational");
+                        await Task.Delay(1000);
+                        await _botClient.SendMessage(chatId, "Processing Services: Fully Operational");
+                        await Task.Delay(1000);
+                        await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
+                        await Task.Delay(1000);
+                        await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
                     }
                 }
                 else if (callbackData == "retry_order")
@@ -223,6 +229,19 @@ public class BotController : ControllerBase
                     await Task.Delay(3000);
                     await _botClient.SendMessage(chatId, "Your choice.");
                 }
+                else if (callbackData == "blacklist_menu")
+                {
+                    var blacklistOptions = new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Email", "blacklist_email") },
+                        new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") }
+                    });
+
+                    await _botClient.SendMessage(chatId, "Select the method you'd like to use to blacklist a user:", replyMarkup: blacklistOptions);
+                }
+
             }
             else
             {
