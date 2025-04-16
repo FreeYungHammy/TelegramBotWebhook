@@ -218,9 +218,9 @@ public class BotController : ControllerBase
                 {
                     _stateService.ClearAwaitingOrderId(chatId);
                     await _botClient.SendMessage(chatId, "No problem! You can always send @NetsellerSupportBot if you would like to check again.");
-                    await Task.Delay(1000);
-                    await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
                     await Task.Delay(2000);
+                    await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
+                    await Task.Delay(3000);
                     await _botClient.SendMessage(chatId, "Your choice.");
                 }
             }
