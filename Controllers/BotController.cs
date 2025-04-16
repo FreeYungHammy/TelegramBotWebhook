@@ -49,14 +49,16 @@ public class BotController : ControllerBase
         var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\{\\\"id\\\":(-?\\d+)");
         var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
         var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\{\\\"id\\\":\\\"(.*?)\\\"");
+        var messageIdMatch = Regex.Match(json, "\\\"message_id\\\":(\\d+)");
 
-        if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success)
+        if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success && messageIdMatch.Success)
         {
             long chatId = long.Parse(chatIdMatch.Groups[1].Value);
             string callbackData = dataMatch.Groups[1].Value;
             string callbackId = callbackIdMatch.Groups[1].Value;
+            int messageId = int.Parse(messageIdMatch.Groups[1].Value);
 
-            await _botClient.AnswerCallbackQuery(callbackId, text: "Loading...");
+            await _botClient.AnswerCallbackQuery(callbackId);
             _logger.LogInformation("Callback data received manually parsed: {Data}", callbackData);
 
             switch (callbackData)
@@ -124,7 +126,7 @@ public class BotController : ControllerBase
                         new[] { InlineKeyboardButton.WithCallbackData("Back", "main_menu") }
                     });
 
-                    await _botClient.SendMessage(chatId, "Select the method you'd like to use to blacklist a user:", replyMarkup: blacklistOptions);
+                    await _botClient.EditMessageReplyMarkup(chatId, messageId, blacklistOptions);
                     break;
 
                 case "main_menu":
@@ -142,7 +144,7 @@ public class BotController : ControllerBase
                         }
                     });
 
-                    await _botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: mainKeyboard);
+                    await _botClient.EditMessageReplyMarkup(chatId, messageId, mainKeyboard);
                     break;
             }
 
