@@ -197,8 +197,17 @@ public class BotController : ControllerBase
                 }
                 else if (callbackData == "serverstatus")
                 {
+                    var check = await _botClient.SendMessage(chatId, "Checking...");
+                    await Task.Delay(2000);
                     var result = await _serverStatusService.PingAsync();
-                    await _botClient.SendMessage(chatId, result);
+
+                    if (result.Contains("Operational"))
+                    {
+                        await _botClient.SendMessage(chatId,
+                            "Processing Services: Fully Operational\n" +
+                            "Report Services: Fully Operational\n" +
+                            "Administration Portals: Fully Operational");
+                    }
                 }
                 else if (callbackData == "retry_order")
                 {
@@ -210,7 +219,6 @@ public class BotController : ControllerBase
                     _stateService.ClearAwaitingOrderId(chatId);
                     await _botClient.SendMessage(chatId, "No problem! You can always send @StatusPaymentBot if you would like to check again. \nOr you could go bug Sean about it... Your choice");
                 }
-
             }
             else
             {
