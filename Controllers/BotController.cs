@@ -139,10 +139,10 @@ public class BotController : ControllerBase
                     "*Help Guide*\n\n" +
                     "• Use `/paymentstatus` to check the status of a payment.\n" +
                     "• You’ll be prompted for your Company# and Order#.\n" +
-                    "• Mention the bot (@StatusPaymentBot) to trigger.",
+                    "• Mention the bot (@NetsellerSupportBot) to trigger.",
                     parseMode: ParseMode.Markdown);
             }
-            else if (text.Contains("@StatusPaymentBot"))
+            else if (text.Contains("@NetsellerSupportBot"))
             {
                 var keyboard = new InlineKeyboardMarkup(new[]
                 {
@@ -192,7 +192,7 @@ public class BotController : ControllerBase
                         "*Help Guide*\n\n" +
                         "• Use `/paymentstatus` to check the status of a payment.\n" +
                         "• You’ll be prompted for your Company# and Order#.\n" +
-                        "• Mention the bot (@StatusPaymentBot) to trigger.",
+                        "• Mention the bot (@NetsellerSupportBot) to trigger.",
                         parseMode: ParseMode.Markdown);
                 }
                 else if (callbackData == "serverstatus")
@@ -217,7 +217,7 @@ public class BotController : ControllerBase
                 else if (callbackData == "cancel_order")
                 {
                     _stateService.ClearAwaitingOrderId(chatId);
-                    await _botClient.SendMessage(chatId, "No problem! You can always send @StatusPaymentBot if you would like to check again. \nOr you could go bug Sean about it... Your choice");
+                    await _botClient.SendMessage(chatId, "No problem! You can always send @NetsellerSupportBot if you would like to check again. \nOr you could go bug Sean about it... Your choice");
                 }
             }
             else
