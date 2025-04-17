@@ -83,9 +83,12 @@ public class BotController : ControllerBase
                 case "helpinfo":
                     await _botClient.SendMessage(chatId,
                         "*Help Guide*\n\n" +
-                        "• Use `/paymentstatus` to check the status of a payment.\n" +
-                        "• You’ll be prompted for your Company# and Order#.\n" +
-                        "• Mention the bot (@NetsellerSupportBot) to trigger.",
+                        "• Mention @NetsellerStatusBot to trigger interactions.\n" +
+                        "• Payment Status returns the status of a payment with specified Order# and Company#\n" +
+                        "• Blacklist Service includes blacklisting a user based off either their Phone Number, Email First 6 Card Number Digits or Last 4.\n" +
+                        "• Descriptors Service returns the contents of the descriptors file.\n" +
+                        "• Server Status returns the status of the server.\n" +
+                        "• If you would like to view this help menu, it can be returned through the command: '\\help'",
                         parseMode: ParseMode.Markdown);
                     break;
 
@@ -246,10 +249,10 @@ public class BotController : ControllerBase
                     "• Descriptors Service returns the contents of the descriptors file.\n" +
                     "• Server Status returns the status of the server.\n" +
                     "• If you would like to view this help menu, it can be returned through the command: '\\help'",
-                    parseMode: ParseMode.Markdown);                              
-            }                                                                  
-            else if (text.Contains("@NetsellerSupportBot"))                      
-            {                                                                   
+                    parseMode: ParseMode.Markdown);
+            }
+            else if (text.Contains("@NetsellerSupportBot"))
+            {
                 var keyboard = new InlineKeyboardMarkup(new[]
                 {
                     new[]
