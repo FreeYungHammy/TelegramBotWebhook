@@ -12,65 +12,47 @@ namespace TelegramBot_v2.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<BlacklistService> _logger;
 
+        private readonly string _endpointUrl = "https://process.netsellerpay.com/";
+
         public BlacklistService(HttpClient httpClient, ILogger<BlacklistService> logger)
         {
             _httpClient = httpClient;
             _logger = logger;
         }
 
-        public async Task<string> BlacklistPhoneNumberAsync(string phoneNumber)
+        public async Task<string> SubmitBlacklistAsync(string filterValue, string filterType, string comments = "Blacklisted via TelegramBot")
         {
-            var url = "https://your-api/blacklist/phone"; 
-            var content = new StringContent(JsonSerializer.Serialize(new { phoneNumber }), Encoding.UTF8, "application/json");
-
-            return await SendRequestAsync(url, content);
-        }
-
-        public async Task<string> BlacklistEmailAsync(string email)
-        {
-            var url = "https://your-api/blacklist/email"; 
-            var content = new StringContent(JsonSerializer.Serialize(new { email }), Encoding.UTF8, "application/json");
-
-            return await SendRequestAsync(url, content);
-        }
-
-        public async Task<string> BlacklistCardFirst6Async(string first6Digits)
-        {
-            var url = "https://your-api/blacklist/card/first6"; 
-            var content = new StringContent(JsonSerializer.Serialize(new { first6Digits }), Encoding.UTF8, "application/json");
-
-            return await SendRequestAsync(url, content);
-        }
-
-        public async Task<string> BlacklistCardLast4Async(string last4Digits)
-        {
-            var url = "https://your-api/blacklist/card/last4"; 
-            var content = new StringContent(JsonSerializer.Serialize(new { last4Digits }), Encoding.UTF8, "application/json");
-
-            return await SendRequestAsync(url, content);
-        }
-
-        private async Task<string> SendRequestAsync(string url, HttpContent content)
-        {
-            _logger.LogInformation("Sending blacklist request to {Url}", url);
+            var content = new FormUrlEncodedContent(new[]
+            {
+        new KeyValuePair<string, string>("filterValue", filterValue),
+        new KeyValuePair<string, string>("filterType", filterType),
+        new KeyValuePair<string, string>("comments", comments)
+    });
 
             try
             {
-                var response = await _httpClient.PostAsync(url, content);
+                _logger.LogInformation("Submitting blacklist to {Url} with {Type}: {Value}", _endpointUrl, filterType, filterValue);
+
+                var response = await _httpClient.PostAsync(_endpointUrl, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
                 if (response.IsSuccessStatusCode)
                 {
+                    _logger.LogInformation("Blacklist submitted successfully. Response: {Response}", responseContent);
                     return "User successfully blacklisted.";
                 }
                 else
                 {
-                    return $"Failed to blacklist. Status: {response.StatusCode}";
+                    _logger.LogWarning("Blacklist submission failed. Response: {Response}", responseContent);
+                    return $"Failed to submit blacklist. Server response: {responseContent}";
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Blacklist request failed.");
-                return "Blacklist service failed. Please try again later.";
+                _logger.LogError(ex, "Exception during blacklist submission.");
+                return $"Error while submitting blacklist: {ex.Message}";
             }
         }
+
     }
 }

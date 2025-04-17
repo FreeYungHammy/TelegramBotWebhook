@@ -21,6 +21,7 @@ public class BotController : ControllerBase
     private readonly TelegramBotClient _botClient;
     private readonly PaymentStatusService _paymentService;
     private readonly StateService _stateService;
+    private readonly BlacklistService _blacklistService;
     private readonly ServerStatusPingService _serverStatusService;
     private readonly DescriptorsService _descriptorsService;
 
@@ -29,6 +30,7 @@ public class BotController : ControllerBase
         TelegramBotClient botClient,
         PaymentStatusService paymentService,
         StateService stateService,
+        BlacklistService blacklistService,
         ServerStatusPingService serverStatusService,
         DescriptorsService descriptorsService)
     {
@@ -36,6 +38,7 @@ public class BotController : ControllerBase
         _botClient = botClient;
         _paymentService = paymentService;
         _stateService = stateService;
+        _blacklistService = blacklistService;
         _serverStatusService = serverStatusService;
         _descriptorsService = descriptorsService;
     }
@@ -131,6 +134,16 @@ public class BotController : ControllerBase
                     await _botClient.EditMessageReplyMarkup(chatId, messageId, blacklistOptions);
                     break;
 
+                case "blacklist_phone":
+                case "blacklist_email":
+                case "blacklist_first6":
+                case "blacklist_last4":
+                    var type = callbackData.Replace("blacklist_", ""); 
+                    _stateService.SetAwaitingBlacklistType(chatId, type);
+                    await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
+                    break;
+
+
                 case "descriptors":
                     var contents = "The following are the contents of the Descriptors:\n" + await _descriptorsService.GetDescriptorsAsync();
                     await _botClient.SendMessage(chatId, contents);
@@ -222,6 +235,17 @@ public class BotController : ControllerBase
                     await _botClient.SendMessage(chatId, "No Company# found. Please register first.");
                 }
 
+                return Ok();
+            }
+
+            if (_stateService.IsAwaitingBlacklist(chatId))
+            {
+                var filterType = _stateService.GetBlacklistType(chatId);
+                var filterValue = text.Trim();
+
+                _stateService.ClearBlacklist(chatId);
+                var response = await _blacklistService.SubmitBlacklistAsync(filterValue, filterType);
+                await _botClient.SendMessage(chatId, response);
                 return Ok();
             }
 
