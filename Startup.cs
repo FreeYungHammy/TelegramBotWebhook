@@ -28,6 +28,7 @@ public class Startup
         services.AddControllers();
         services.AddHttpClient<PaymentStatusService>();
         services.AddHttpClient<ServerStatusPingService>();
+        services.AddSingleton<DescriptorsService>();
 
         services.AddSingleton<TelegramBotClient>(_ =>
         {

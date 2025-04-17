@@ -22,19 +22,22 @@ public class BotController : ControllerBase
     private readonly PaymentStatusService _paymentService;
     private readonly StateService _stateService;
     private readonly ServerStatusPingService _serverStatusService;
+    private readonly DescriptorsService _descriptorsService;
 
     public BotController(
         ILogger<BotController> logger,
         TelegramBotClient botClient,
         PaymentStatusService paymentService,
         StateService stateService,
-        ServerStatusPingService serverStatusService)
+        ServerStatusPingService serverStatusService,
+        DescriptorsService descriptorsService)
     {
         _logger = logger;
         _botClient = botClient;
         _paymentService = paymentService;
         _stateService = stateService;
         _serverStatusService = serverStatusService;
+        _descriptorsService = descriptorsService;
     }
 
     [HttpPost]
@@ -46,9 +49,9 @@ public class BotController : ControllerBase
         var json = await reader.ReadToEndAsync();
         _logger.LogDebug("Raw JSON: {Json}", json);
 
-        var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\{\\\"id\\\":(-?\\d+)");
+        var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\\"?\\\"{\\\"id\\\":(-?\\d+)");
         var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
-        var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\{\\\"id\\\":\\\"(.*?)\\\"");
+        var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\\"{\\\"id\\\":\\\"(.*?)\\\"");
         var messageIdMatch = Regex.Match(json, "\\\"message_id\\\":(\\d+)");
 
         if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success && messageIdMatch.Success)
@@ -110,10 +113,6 @@ public class BotController : ControllerBase
                 case "cancel_order":
                     _stateService.ClearAwaitingOrderId(chatId);
                     await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
-                    await Task.Delay(2000);
-                    await _botClient.SendMessage(chatId, "Or you could go bug Sean about it...");
-                    await Task.Delay(3000);
-                    await _botClient.SendMessage(chatId, "Your choice.");
                     break;
 
                 case "blacklist_menu":
@@ -129,18 +128,27 @@ public class BotController : ControllerBase
                     await _botClient.EditMessageReplyMarkup(chatId, messageId, blacklistOptions);
                     break;
 
+                case "descriptors":
+                    var contents = "The following are the contents of the Descriptors:\n" + await _descriptorsService.GetDescriptorsAsync();
+                    await _botClient.SendMessage(chatId, contents);
+                    break;
+
                 case "main_menu":
                     var mainKeyboard = new InlineKeyboardMarkup(new[]
                     {
                         new[]
                         {
                             InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
-                            InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
+                            InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus")
                         },
                         new[]
                         {
-                            InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus"),
+                            InlineKeyboardButton.WithCallbackData("Descriptors", "descriptors"),
                             InlineKeyboardButton.WithCallbackData("Blacklist", "blacklist_menu")
+                        },
+                        new[]
+                        {
+                            InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
                         }
                     });
 
@@ -194,11 +202,6 @@ public class BotController : ControllerBase
                     }
                     else
                     {
-                        if (text.ToLower().Contains("sean"))
-                        {
-                            await _botClient.SendMessage(chatId, "Very funny. Try entering a real Order# now.");
-                        }
-
                         var retryButtons = new InlineKeyboardMarkup(new[]
                         {
                             new[]
@@ -237,24 +240,31 @@ public class BotController : ControllerBase
             {
                 await _botClient.SendMessage(chatId,
                     "*Help Guide*\n\n" +
-                    "• Use `/paymentstatus` to check the status of a payment.\n" +
-                    "• You’ll be prompted for your Company# and Order#.\n" +
-                    "• Mention the bot (@NetsellerSupportBot) to trigger.",
-                    parseMode: ParseMode.Markdown);
-            }
-            else if (text.Contains("@NetsellerSupportBot"))
-            {
+                    "• Mention @NetsellerStatusBot to trigger interactions.\n" +
+                    "• Payment Status returns the status of a payment with specified Order# and Company#\n" +
+                    "• Blacklist Service includes blacklisting a user based off either their Phone Number, Email First 6 Card Number Digits or Last 4.\n" +
+                    "• Descriptors Service returns the contents of the descriptors file.\n" +
+                    "• Server Status returns the status of the server.\n" +
+                    "• If you would like to view this help menu, it can be returned through the command: '\\help'",
+                    parseMode: ParseMode.Markdown);                              
+            }                                                                  
+            else if (text.Contains("@NetsellerSupportBot"))                      
+            {                                                                   
                 var keyboard = new InlineKeyboardMarkup(new[]
                 {
                     new[]
                     {
                         InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
-                        InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
+                        InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus")
                     },
                     new[]
                     {
-                        InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus"),
+                        InlineKeyboardButton.WithCallbackData("Descriptors", "descriptors"),
                         InlineKeyboardButton.WithCallbackData("Blacklist", "blacklist_menu")
+                    },
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
                     }
                 });
 
