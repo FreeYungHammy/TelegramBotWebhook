@@ -49,10 +49,10 @@ public class BotController : ControllerBase
         var json = await reader.ReadToEndAsync();
         _logger.LogDebug("Raw JSON: {Json}", json);
 
-        var chatIdMatch = Regex.Match(json, "\\\"chat\\\":\\\"?\\\"{\\\"id\\\":(-?\\d+)");
-        var dataMatch = Regex.Match(json, "\\\"data\\\":\\\"(.*?)\\\"");
-        var callbackIdMatch = Regex.Match(json, "\\\"callback_query\\\":\\\"{\\\"id\\\":\\\"(.*?)\\\"");
-        var messageIdMatch = Regex.Match(json, "\\\"message_id\\\":(\\d+)");
+        var chatIdMatch = Regex.Match(json, "\"chat\":\\{\"id\":(-?\\d+)");
+        var dataMatch = Regex.Match(json, "\"data\":\"(.*?)\"");
+        var callbackIdMatch = Regex.Match(json, "\"callback_query\":\\{\"id\":\"(.*?)\"");
+        var messageIdMatch = Regex.Match(json, "\"message_id\":(\\d+)");
 
         if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success && messageIdMatch.Success)
         {
