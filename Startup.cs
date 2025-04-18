@@ -29,6 +29,8 @@ public class Startup
         services.AddHttpClient<PaymentStatusService>();
         services.AddHttpClient<ServerStatusPingService>();
         services.AddSingleton<DescriptorsService>();
+        services.AddSingleton<BlacklistService>();
+
 
         services.AddSingleton<TelegramBotClient>(_ =>
         {

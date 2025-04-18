@@ -145,7 +145,7 @@ public class BotController : ControllerBase
 
 
                 case "descriptors":
-                    var contents = "The following are the contents of the Descriptors:\n" + await _descriptorsService.GetDescriptorsAsync();
+                    var contents = "Here are the Descriptors:\n\n" + await _descriptorsService.GetDescriptorsAsync();
                     await _botClient.SendMessage(chatId, contents);
                     break;
 
