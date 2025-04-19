@@ -163,7 +163,7 @@ public class BotController : ControllerBase
                     if (System.IO.File.Exists(filePath))
                     {
                         await using var stream = System.IO.File.OpenRead(filePath);
-                        await _botClient.SendDocumentAsync(chatId, new Telegram.Bot.Types.InputFiles.InputOnlineFile(stream, "descriptors.txt"));
+                        await _botClient.SendDocument(chatId, new InputFileStream(stream, "descriptors.txt"));
                     }
                     else
                     {
