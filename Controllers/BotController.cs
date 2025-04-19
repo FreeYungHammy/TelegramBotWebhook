@@ -276,18 +276,29 @@ public class BotController : ControllerBase
                     .Where(line => line.ToLower().Contains(keyword))
                     .ToList();
 
-                if (matchingLines.Any())
+                if (matchingLines.Count == 1 && matchingLines[0].ToLower().Contains(keyword))
                 {
-                    var response = string.Join("\n", matchingLines);
-                    await _botClient.SendMessage(chatId, $"Search Results:\n{response}");
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nFound: `{matchingLines[0].Trim()}`",
+                        parseMode: ParseMode.Markdown);
+                }
+                else if (matchingLines.Any())
+                {
+                    var list = string.Join("\n", matchingLines.Select((line, i) => $"{i + 1}. {line.Trim()}"));
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nFound the following similar entries:\n{list}",
+                        parseMode: ParseMode.Markdown);
                 }
                 else
                 {
-                    await _botClient.SendMessage(chatId, "No matches found in descriptors.");
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nNo matches found in descriptors.",
+                        parseMode: ParseMode.Markdown);
                 }
 
                 return Ok();
             }
+
 
             if (_stateService.IsAwaitingBlacklist(chatId))
             {
