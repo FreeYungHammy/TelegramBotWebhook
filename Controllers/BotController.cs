@@ -12,6 +12,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramBot_v2.Services;
 using Newtonsoft.Json.Converters;
+using System.Collections.Concurrent;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -56,6 +57,7 @@ public class BotController : ControllerBase
         var dataMatch = Regex.Match(json, "\"data\":\"(.*?)\"");
         var callbackIdMatch = Regex.Match(json, "\"callback_query\":\\{\"id\":\"(.*?)\"");
         var messageIdMatch = Regex.Match(json, "\"message_id\":(\\d+)");
+
 
         if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success && messageIdMatch.Success)
         {
@@ -145,8 +147,33 @@ public class BotController : ControllerBase
 
 
                 case "descriptors":
-                    var contents = "Here are the Descriptors:\n\n" + await _descriptorsService.GetDescriptorsAsync();
-                    await _botClient.SendMessage(chatId, contents);
+                    var descriptorsSubmenu = new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithCallbackData("Download File", "descriptors_download") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Search Descriptor", "descriptors_search") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Back", "main_menu") }
+                    });
+
+                    await _botClient.EditMessageReplyMarkup(chatId, messageId, descriptorsSubmenu);
+                    break;
+
+                case "descriptors_download":
+                    var filePath = Path.Combine("/home/site/wwwroot", "descriptors.txt");
+
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        await using var stream = System.IO.File.OpenRead(filePath);
+                        await _botClient.SendDocumentAsync(chatId, new Telegram.Bot.Types.InputFiles.InputOnlineFile(stream, "descriptors.txt"));
+                    }
+                    else
+                    {
+                        await _botClient.SendMessage(chatId, "Descriptor file could not be found.");
+                    }
+                    break;
+
+                case "descriptors_search":
+                    _stateService.SetAwaitingDescriptorSearch(chatId);
+                    await _botClient.SendMessage(chatId, "Please enter a keyword or phrase to search within descriptors.");
                     break;
 
                 case "main_menu":
@@ -233,6 +260,30 @@ public class BotController : ControllerBase
                 else
                 {
                     await _botClient.SendMessage(chatId, "No Company# found. Please register first.");
+                }
+
+                return Ok();
+            }
+
+            if (_stateService.IsAwaitingDescriptorSearch(chatId))
+            {
+                var keyword = text.ToLower();
+                _stateService.ClearAwaitingDescriptorSearch(chatId);
+
+                var contents = await _descriptorsService.GetDescriptorsAsync();
+                var matchingLines = contents
+                    .Split('\n')
+                    .Where(line => line.ToLower().Contains(keyword))
+                    .ToList();
+
+                if (matchingLines.Any())
+                {
+                    var response = string.Join("\n", matchingLines);
+                    await _botClient.SendMessage(chatId, $"Search Results:\n{response}");
+                }
+                else
+                {
+                    await _botClient.SendMessage(chatId, "No matches found in descriptors.");
                 }
 
                 return Ok();

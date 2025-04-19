@@ -13,11 +13,15 @@ namespace TelegramBot_v2.Services
         private readonly ConcurrentDictionary<long, bool> _awaitingCompanyId = new();
         private readonly ConcurrentDictionary<long, string> _awaitingOrderId = new();
         private readonly Dictionary<long, string> awaitingBlacklistType = new();
+        private readonly ConcurrentDictionary<long, bool> _awaitingDescriptorSearch = new();
 
         public void SetAwaitingBlacklistType(long chatId, string type) => awaitingBlacklistType[chatId] = type;
         public bool IsAwaitingBlacklist(long chatId) => awaitingBlacklistType.ContainsKey(chatId);
         public string GetBlacklistType(long chatId) => awaitingBlacklistType.TryGetValue(chatId, out var type) ? type : null;
         public void ClearBlacklist(long chatId) => awaitingBlacklistType.Remove(chatId);
+        public void SetAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch[chatId] = true;
+        public bool IsAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch.ContainsKey(chatId);
+        public void ClearAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch.TryRemove(chatId, out _);
 
         public StateService(string storagePath)
         {
