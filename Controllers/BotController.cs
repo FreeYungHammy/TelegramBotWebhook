@@ -142,7 +142,7 @@ public class BotController : ControllerBase
                 case "blacklist_email":
                     var type = callbackData.Replace("blacklist_email", "1");
                     _stateService.SetAwaitingBlacklistType(chatId, type);
-                    await _botClient.SendMessage(chatId, $"Please enter the {type} you want to blacklist:");
+                    await _botClient.SendMessage(chatId, $"Please enter the email you want to blacklist.");
                     break;
                 case "blacklist_first6":
                 case "blacklist_last4":
