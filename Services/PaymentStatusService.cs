@@ -73,8 +73,8 @@ public class PaymentStatusService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve payment status");
-            return (false, "Failed to retrieve payment status: " + ex.Message);
+            _logger.LogError(ex, "Failed to retrieve transaction status");
+            return (false, "Failed to retrieve transaction status: " + ex.Message);
         }
     }
 }

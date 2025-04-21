@@ -30,7 +30,7 @@ namespace TelegramBot_v2.Services
                 }
                 else
                 {
-                    return "Server Status: Server offline. Contact Cyberplumber immediately to resolve.";
+                    return "Server Status: Server offline. Contact NetSellerPay immediately to resolve.";
                 }
             }
             catch (Exception ex)
