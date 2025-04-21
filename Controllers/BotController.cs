@@ -146,10 +146,20 @@ public class BotController : ControllerBase
                     break;
                 case "blacklist_first6":
                 case "blacklist_last4":
-                    //var type = callbackData.Replace("blacklist_", ""); 
-                    //_stateService.SetAwaitingBlacklistType(chatId, type);
-                    //await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
-                    //break;
+                //var type = callbackData.Replace("blacklist_", ""); 
+                //_stateService.SetAwaitingBlacklistType(chatId, type);
+                //await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
+                //break;
+
+                case "retry_blacklist_email":
+                    _stateService.SetAwaitingBlacklistType(chatId, "1"); // '1' represents email
+                    await _botClient.SendMessage(chatId, "Please enter the email you want to blacklist.");
+                    break;
+
+                case "cancel_blacklist":
+                    _stateService.ClearBlacklist(chatId);
+                    await _botClient.SendMessage(chatId, "Blacklist process canceled. You can always return to it from the main menu or mention @NetsellerSupportBot to trigger.");
+                    break;
 
 
                 case "descriptors":
@@ -256,7 +266,7 @@ public class BotController : ControllerBase
                             new[]
                             {
                                 InlineKeyboardButton.WithCallbackData("Yes", "retry_order"),
-                                InlineKeyboardButton.WithCallbackData("No", "cancel_order")
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_blacklist")
                             }
                         });
 
@@ -311,11 +321,31 @@ public class BotController : ControllerBase
                 var filterType = _stateService.GetBlacklistType(chatId);
                 var filterValue = text.Trim();
 
+                if (filterType == "1")
+                {
+                    var isValidEmail = Regex.IsMatch(filterValue, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+                    if (!isValidEmail)
+                    {
+                        var retryButtons = new InlineKeyboardMarkup(new[]
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData("Yes", "retry_blacklist_email"),
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_order") // you may want to change this callback later
+                            }
+                        });
+
+                        await _botClient.SendMessage(chatId, "Invalid email format. Would you like to try again?", replyMarkup: retryButtons);
+                        return Ok();
+                    }
+                }
+
                 _stateService.ClearBlacklist(chatId);
                 var response = await _blacklistService.SubmitBlacklistAsync(filterValue, filterType);
                 await _botClient.SendMessage(chatId, response);
                 return Ok();
             }
+
 
             if (text.StartsWith("/paymentstatus"))
             {
