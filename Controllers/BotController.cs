@@ -110,6 +110,8 @@ public class BotController : ControllerBase
                         await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
                         await Task.Delay(1200);
                         await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
+                        await Task.Delay(1200);
+                        await _botClient.SendMessage(chatId, "All services are fully operational.");
                     }
                     break;
 
@@ -126,10 +128,10 @@ public class BotController : ControllerBase
                 case "blacklist_menu":
                     var blacklistOptions = new InlineKeyboardMarkup(new[]
                     {
-                        new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
                         new[] { InlineKeyboardButton.WithCallbackData("Email", "blacklist_email") },
-                        new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
-                        new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") },
                         new[] { InlineKeyboardButton.WithCallbackData("Back", "main_menu") }
                     });
 
@@ -138,12 +140,16 @@ public class BotController : ControllerBase
 
                 case "blacklist_phone":
                 case "blacklist_email":
+                    var type = callbackData.Replace("blacklist_email", "1");
+                    _stateService.SetAwaitingBlacklistType(chatId, type);
+                    await _botClient.SendMessage(chatId, $"Please enter the {type} you want to blacklist:");
+                    break;
                 case "blacklist_first6":
                 case "blacklist_last4":
-                    var type = callbackData.Replace("blacklist_", ""); 
-                    _stateService.SetAwaitingBlacklistType(chatId, type);
-                    await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
-                    break;
+                    //var type = callbackData.Replace("blacklist_", ""); 
+                    //_stateService.SetAwaitingBlacklistType(chatId, type);
+                    //await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
+                    //break;
 
 
                 case "descriptors":
