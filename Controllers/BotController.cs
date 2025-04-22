@@ -118,8 +118,10 @@ public class BotController : ControllerBase
 
                 case "cancel_order":
                     _stateService.ClearAwaitingOrderId(chatId);
+                    _stateService.ClearBlacklist(chatId); 
                     await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
                     break;
+
 
                 case "blacklist_menu":
                     var blacklistOptions = new InlineKeyboardMarkup(new[]
