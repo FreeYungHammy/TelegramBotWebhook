@@ -333,7 +333,7 @@ public class BotController : ControllerBase
                             new[]
                             {
                                 InlineKeyboardButton.WithCallbackData("Yes", "retry_blacklist_email"),
-                                InlineKeyboardButton.WithCallbackData("No", "cancel_order") // you may want to change this callback later
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_blacklist") // you may want to change this callback later
                             }
                         });
 
