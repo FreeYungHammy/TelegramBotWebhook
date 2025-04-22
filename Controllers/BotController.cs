@@ -12,6 +12,7 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramBot_v2.Services;
 using Newtonsoft.Json.Converters;
+using System.Collections.Concurrent;
 
 [ApiController]
 [Route("api/[controller]")]
@@ -56,6 +57,7 @@ public class BotController : ControllerBase
         var dataMatch = Regex.Match(json, "\"data\":\"(.*?)\"");
         var callbackIdMatch = Regex.Match(json, "\"callback_query\":\\{\"id\":\"(.*?)\"");
         var messageIdMatch = Regex.Match(json, "\"message_id\":(\\d+)");
+
 
         if (chatIdMatch.Success && dataMatch.Success && callbackIdMatch.Success && messageIdMatch.Success)
         {
@@ -108,6 +110,8 @@ public class BotController : ControllerBase
                         await _botClient.SendMessage(chatId, "Report Services: Fully Operational");
                         await Task.Delay(1200);
                         await _botClient.SendMessage(chatId, "Administration Portals: Fully Operational");
+                        await Task.Delay(1200);
+                        await _botClient.SendMessage(chatId, "All services are fully operational.");
                     }
                     break;
 
@@ -126,10 +130,10 @@ public class BotController : ControllerBase
                 case "blacklist_menu":
                     var blacklistOptions = new InlineKeyboardMarkup(new[]
                     {
-                        new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("Phone Number", "blacklist_phone") },
                         new[] { InlineKeyboardButton.WithCallbackData("Email", "blacklist_email") },
-                        new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
-                        new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("First 6 (Card Number)", "blacklist_first6") },
+                        //new[] { InlineKeyboardButton.WithCallbackData("Last 4 (Card Number)", "blacklist_last4") },
                         new[] { InlineKeyboardButton.WithCallbackData("Back", "main_menu") }
                     });
 
@@ -138,17 +142,56 @@ public class BotController : ControllerBase
 
                 case "blacklist_phone":
                 case "blacklist_email":
+                    var type = callbackData.Replace("blacklist_email", "1");
+                    _stateService.SetAwaitingBlacklistType(chatId, type);
+                    await _botClient.SendMessage(chatId, $"Please enter the email you want to blacklist.");
+                    break;
                 case "blacklist_first6":
                 case "blacklist_last4":
-                    var type = callbackData.Replace("blacklist_", ""); 
-                    _stateService.SetAwaitingBlacklistType(chatId, type);
-                    await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
+                //var type = callbackData.Replace("blacklist_", ""); 
+                //_stateService.SetAwaitingBlacklistType(chatId, type);
+                //await _botClient.SendMessage(chatId, $"Please enter the {type.Replace("first6", "first 6 card digits").Replace("last4", "last 4 card digits")} you want to blacklist:");
+                //break;
+
+                case "retry_blacklist_email":
+                    _stateService.SetAwaitingBlacklistType(chatId, "1"); // '1' represents email
+                    await _botClient.SendMessage(chatId, "Please enter the email you want to blacklist.");
+                    break;
+
+                case "cancel_blacklist":
+                    _stateService.ClearBlacklist(chatId);
+                    await _botClient.SendMessage(chatId, "Blacklist process canceled. You can always return to it from the main menu or mention @NetsellerSupportBot to trigger.");
                     break;
 
 
                 case "descriptors":
-                    var contents = "Here are the Descriptors:\n\n" + await _descriptorsService.GetDescriptorsAsync();
-                    await _botClient.SendMessage(chatId, contents);
+                    var descriptorsSubmenu = new InlineKeyboardMarkup(new[]
+                    {
+                        new[] { InlineKeyboardButton.WithCallbackData("Download File", "descriptors_download") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Search Descriptor", "descriptors_search") },
+                        new[] { InlineKeyboardButton.WithCallbackData("Back", "main_menu") }
+                    });
+
+                    await _botClient.EditMessageReplyMarkup(chatId, messageId, descriptorsSubmenu);
+                    break;
+
+                case "descriptors_download":
+                    var filePath = Path.Combine("/home/site/wwwroot", "descriptors.txt");
+
+                    if (System.IO.File.Exists(filePath))
+                    {
+                        await using var stream = System.IO.File.OpenRead(filePath);
+                        await _botClient.SendDocument(chatId, new InputFileStream(stream, "descriptors.txt"));
+                    }
+                    else
+                    {
+                        await _botClient.SendMessage(chatId, "Descriptor file could not be found.");
+                    }
+                    break;
+
+                case "descriptors_search":
+                    _stateService.SetAwaitingDescriptorSearch(chatId);
+                    await _botClient.SendMessage(chatId, "Please enter a keyword or phrase to search within descriptors.");
                     break;
 
                 case "main_menu":
@@ -225,7 +268,7 @@ public class BotController : ControllerBase
                             new[]
                             {
                                 InlineKeyboardButton.WithCallbackData("Yes", "retry_order"),
-                                InlineKeyboardButton.WithCallbackData("No", "cancel_order")
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_blacklist")
                             }
                         });
 
@@ -240,16 +283,71 @@ public class BotController : ControllerBase
                 return Ok();
             }
 
+            if (_stateService.IsAwaitingDescriptorSearch(chatId))
+            {
+                var keyword = text.ToLower();
+                _stateService.ClearAwaitingDescriptorSearch(chatId);
+
+                var contents = await _descriptorsService.GetDescriptorsAsync();
+                var matchingLines = contents
+                    .Split('\n')
+                    .Where(line => line.ToLower().Contains(keyword))
+                    .ToList();
+
+                if (matchingLines.Count == 1 && matchingLines[0].ToLower().Contains(keyword))
+                {
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nFound: `{matchingLines[0].Trim()}`",
+                        parseMode: ParseMode.Markdown);
+                }
+                else if (matchingLines.Any())
+                {
+                    var list = string.Join("\n", matchingLines.Select((line, i) => $"{i + 1}. {line.Trim()}"));
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nFound the following similar entries:\n{list}",
+                        parseMode: ParseMode.Markdown);
+                }
+                else
+                {
+                    await _botClient.SendMessage(chatId,
+                        $"Search Input: `{text}`\nNo matches found in descriptors.",
+                        parseMode: ParseMode.Markdown);
+                }
+
+                return Ok();
+            }
+
+
             if (_stateService.IsAwaitingBlacklist(chatId))
             {
                 var filterType = _stateService.GetBlacklistType(chatId);
                 var filterValue = text.Trim();
+
+                if (filterType == "1")
+                {
+                    var isValidEmail = Regex.IsMatch(filterValue, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
+                    if (!isValidEmail)
+                    {
+                        var retryButtons = new InlineKeyboardMarkup(new[]
+                        {
+                            new[]
+                            {
+                                InlineKeyboardButton.WithCallbackData("Yes", "retry_blacklist_email"),
+                                InlineKeyboardButton.WithCallbackData("No", "cancel_order") // you may want to change this callback later
+                            }
+                        });
+
+                        await _botClient.SendMessage(chatId, "Invalid email format. Would you like to try again?", replyMarkup: retryButtons);
+                        return Ok();
+                    }
+                }
 
                 _stateService.ClearBlacklist(chatId);
                 var response = await _blacklistService.SubmitBlacklistAsync(filterValue, filterType);
                 await _botClient.SendMessage(chatId, response);
                 return Ok();
             }
+
 
             if (text.StartsWith("/paymentstatus"))
             {

@@ -12,7 +12,7 @@ namespace TelegramBot_v2.Services
         private readonly HttpClient _httpClient;
         private readonly ILogger<BlacklistService> _logger;
 
-        private readonly string _endpointUrl = "https://process.netsellerpay.com/";
+        private readonly string _endpointUrl = "https://process.netsellerpay.com/member/blacklistEndpoint.asp";
 
         public BlacklistService(HttpClient httpClient, ILogger<BlacklistService> logger)
         {
