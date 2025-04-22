@@ -13,12 +13,15 @@ namespace TelegramBot_v2.Services
         private readonly ConcurrentDictionary<long, bool> _awaitingCompanyId = new();
         private readonly ConcurrentDictionary<long, string> _awaitingOrderId = new();
         private readonly Dictionary<long, string> awaitingBlacklistType = new();
-        private readonly ConcurrentDictionary<long, bool> _awaitingDescriptorSearch = new();
+        private readonly ConcurrentDictionary<long, bool> _awaitingDescriptorSearch = new(); // ✅ only one declaration
 
+        // ----- Blacklist State -----
         public void SetAwaitingBlacklistType(long chatId, string type) => awaitingBlacklistType[chatId] = type;
         public bool IsAwaitingBlacklist(long chatId) => awaitingBlacklistType.ContainsKey(chatId);
         public string GetBlacklistType(long chatId) => awaitingBlacklistType.TryGetValue(chatId, out var type) ? type : null;
         public void ClearBlacklist(long chatId) => awaitingBlacklistType.Remove(chatId);
+
+        // ----- Descriptor Search State -----
         public void SetAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch[chatId] = true;
         public bool IsAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch.ContainsKey(chatId);
         public void ClearAwaitingDescriptorSearch(long chatId) => _awaitingDescriptorSearch.TryRemove(chatId, out _);
@@ -38,14 +41,9 @@ namespace TelegramBot_v2.Services
             );
         }
 
-        // Company ID Registration Flow
+        // ----- Company ID Registration Flow -----
         public bool IsWaitingForCompanyId(long chatId) => _awaitingCompanyId.ContainsKey(chatId);
-
-        public void SetAwaitingCompanyId(long chatId)
-        {
-            _awaitingCompanyId[chatId] = true;
-        }
-
+        public void SetAwaitingCompanyId(long chatId) => _awaitingCompanyId[chatId] = true;
         public void RegisterCompanyId(long chatId, string companyId)
         {
             _awaitingCompanyId.TryRemove(chatId, out _);
@@ -54,20 +52,12 @@ namespace TelegramBot_v2.Services
             File.AppendAllText(_storagePath, $"{chatId},{companyId}{Environment.NewLine}");
         }
 
-        // Order ID Flow
+        // ----- Order ID Flow -----
         public bool IsWaitingForOrderId(long chatId) => _awaitingOrderId.ContainsKey(chatId);
+        public void SetAwaitingOrderId(long chatId, string companyId) => _awaitingOrderId[chatId] = companyId;
+        public void ClearAwaitingOrderId(long chatId) => _awaitingOrderId.TryRemove(chatId, out _);
 
-        public void SetAwaitingOrderId(long chatId, string companyId)
-        {
-            _awaitingOrderId[chatId] = companyId;
-        }
-
-        public void ClearAwaitingOrderId(long chatId)
-        {
-            _awaitingOrderId.TryRemove(chatId, out _);
-        }
-
-        // Read
+        // ----- Lookup -----
         public string? GetCompanyId(long chatId)
         {
             return _groupCompanyMap.TryGetValue(chatId, out var companyId) ? companyId : null;
