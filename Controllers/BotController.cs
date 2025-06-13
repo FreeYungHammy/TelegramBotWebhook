@@ -72,10 +72,11 @@ public class BotController : ControllerBase
             switch (callbackData)
             {
                 case "checkstatus":
-                    var companyId = _stateService.GetCompanyId(chatId);
-                    if (companyId != null)
+                    var companyIds = _stateService.GetCompanyIdsForGroup(chatId);
+
+                    if (companyIds.Any())
                     {
-                        _stateService.SetAwaitingOrderId(chatId, companyId);
+                        _stateService.SetAwaitingOrderEntry(chatId);
                         await _botClient.SendMessage(chatId, "Please enter your Order#.");
                     }
                     else
@@ -116,13 +117,13 @@ public class BotController : ControllerBase
                     break;
 
                 case "retry_order":
-                    _stateService.SetAwaitingOrderId(chatId, _stateService.GetCompanyId(chatId));
+                    _stateService.SetAwaitingOrderEntry(chatId);
                     await _botClient.SendMessage(chatId, "Please enter your Order#.");
                     break;
 
                 case "cancel_order":
-                    _stateService.ClearAwaitingOrderId(chatId);
-                    _stateService.ClearBlacklist(chatId); 
+                    _stateService.ClearAwaitingOrderEntry(chatId);
+                    _stateService.ClearBlacklist(chatId);
                     await _botClient.SendMessage(chatId, "No problem! You can always mention @NetsellerSupportBot if you would like to check again.");
                     break;
 
@@ -241,25 +242,38 @@ public class BotController : ControllerBase
 
             _logger.LogInformation("Received message from {ChatId}: {Text}", chatId, text);
 
+            // -- Handle first-time Company# registration --
             if (_stateService.IsWaitingForCompanyId(chatId))
             {
                 _stateService.RegisterCompanyId(chatId, text);
-                _stateService.SetAwaitingOrderId(chatId, text);
+                _stateService.SetAwaitingOrderEntry(chatId);
                 await _botClient.SendMessage(chatId, $"Company# '{text}' registered. Now, please enter your Order#.");
                 return Ok();
             }
 
-            if (_stateService.IsWaitingForOrderId(chatId))
+            // -- Handle Order# entry --
+            if (_stateService.IsAwaitingOrderEntry(chatId))
             {
-                var companyId = _stateService.GetCompanyId(chatId);
-                if (companyId != null)
+                var companyIds = _stateService.GetCompanyIdsForGroup(chatId);
+                if (companyIds.Any())
                 {
-                    var (found, result) = await _paymentService.QueryPaymentStatusAsync(companyId, text);
-                    await _botClient.SendMessage(chatId, result);
+                    
+                    string responseToSend = "";
 
-                    if (found)
+                    foreach (var id in companyIds)
                     {
-                        _stateService.ClearAwaitingOrderId(chatId);
+                        var (found, result) = await _paymentService.QueryPaymentStatusAsync(id, text);
+                        if (found)
+                        {
+                            responseToSend = result;
+                            break; // to stop checking once a successful response is found 
+                        }
+                    }
+
+                    if (responseToSend != null)
+                    {
+                        await _botClient.SendMessage(chatId, responseToSend, parseMode: ParseMode.Markdown);
+                        _stateService.ClearAwaitingOrderEntry(chatId);
                     }
                     else
                     {
@@ -272,17 +286,19 @@ public class BotController : ControllerBase
                             }
                         });
 
-                        await _botClient.SendMessage(chatId, "Would you like to try entering the Order# again?", replyMarkup: retryButtons);
+                        await _botClient.SendMessage(chatId, "No results found. Would you like to try entering the Order# again?", replyMarkup: retryButtons);
                     }
+
                 }
                 else
                 {
-                    await _botClient.SendMessage(chatId, "No Company# found. Please register first.");
+                    await _botClient.SendMessage(chatId, "No Company#s found. Please register one first.");
                 }
 
                 return Ok();
             }
 
+            // -- Descriptor search --
             if (_stateService.IsAwaitingDescriptorSearch(chatId))
             {
                 var keyword = text.ToLower();
@@ -317,25 +333,25 @@ public class BotController : ControllerBase
                 return Ok();
             }
 
-
+            // -- Blacklist flow --
             if (_stateService.IsAwaitingBlacklist(chatId))
             {
                 var filterType = _stateService.GetBlacklistType(chatId);
                 var filterValue = text.Trim();
 
-                if (filterType == "1")
+                if (filterType == "1") // Email
                 {
                     var isValidEmail = Regex.IsMatch(filterValue, @"^[^@\s]+@[^@\s]+\.[^@\s]+$");
                     if (!isValidEmail)
                     {
                         var retryButtons = new InlineKeyboardMarkup(new[]
                         {
-                            new[]
-                            {
-                                InlineKeyboardButton.WithCallbackData("Yes", "retry_blacklist_email"),
-                                InlineKeyboardButton.WithCallbackData("No", "cancel_blacklist") 
-                            }
-                        });
+                    new[]
+                    {
+                        InlineKeyboardButton.WithCallbackData("Yes", "retry_blacklist_email"),
+                        InlineKeyboardButton.WithCallbackData("No", "cancel_blacklist")
+                    }
+                });
 
                         await _botClient.SendMessage(chatId, "Invalid email format. Would you like to try again?", replyMarkup: retryButtons);
                         return Ok();
@@ -348,57 +364,32 @@ public class BotController : ControllerBase
                 return Ok();
             }
 
-
-            if (text.StartsWith("/paymentstatus"))
-            {
-                var companyId = _stateService.GetCompanyId(chatId);
-                if (companyId != null)
-                {
-                    _stateService.SetAwaitingOrderId(chatId, companyId);
-                    await _botClient.SendMessage(chatId, "Please enter your Order#.");
-                }
-                else
-                {
-                    _stateService.SetAwaitingCompanyId(chatId);
-                    await _botClient.SendMessage(chatId, "Please enter your Company# to register.");
-                }
-            }
-            else if (text.StartsWith("/help"))
-            {
-                await _botClient.SendMessage(chatId,
-                    "*Help Guide*\n\n" +
-                    "• Mention @NetsellerStatusBot to trigger interactions.\n" +
-                    "• Payment Status returns the status of a payment with specified Order# and Company#\n" +
-                    "• Blacklist Service includes blacklisting a user based off either their Phone Number, Email First 6 Card Number Digits or Last 4.\n" +
-                    "• Descriptors Service returns the contents of the descriptors file.\n" +
-                    "• Server Status returns the status of the server.\n" +
-                    "• If you would like to view this help menu, it can be returned through the command: '\\help'",
-                    parseMode: ParseMode.Markdown);
-            }
-            else if (text.Contains("@NetsellerSupportBot"))
+            if (text.Contains("@NetsellerSupportBot"))
             {
                 var keyboard = new InlineKeyboardMarkup(new[]
                 {
-                    new[]
-                    {
-                        InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
-                        InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus")
-                    },
-                    new[]
-                    {
-                        InlineKeyboardButton.WithCallbackData("Descriptors", "descriptors"),
-                        InlineKeyboardButton.WithCallbackData("Blacklist", "blacklist_menu")
-                    },
-                    new[]
-                    {
-                        InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
-                    }
-                });
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Check Payment Status", "checkstatus"),
+                InlineKeyboardButton.WithCallbackData("Server Status", "serverstatus")
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Descriptors", "descriptors"),
+                InlineKeyboardButton.WithCallbackData("Blacklist", "blacklist_menu")
+            },
+            new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Help", "helpinfo")
+            }
+        });
 
                 await _botClient.SendMessage(chatId, "What would you like to do?", replyMarkup: keyboard);
             }
-        }
 
+            return Ok();
+        }
         return Ok();
     }
 }
+
