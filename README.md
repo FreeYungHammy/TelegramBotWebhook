@@ -40,4 +40,7 @@ Designed and developed a fully functional Telegram bot that provided answers to 
 
 ## License
 
-MIT License
+This project is not open-source. It is provided solely for demonstration purposes to showcase technical ability.
+
+You may not copy, modify, distribute, or use any part of this code in your own projects without explicit permission.
+
