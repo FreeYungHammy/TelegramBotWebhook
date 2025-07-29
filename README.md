@@ -1,6 +1,6 @@
 # Netseller Support Bot
 
-Designed and developed a fully functional Telegram bot that provided answers to commonly asked questions by various merchant support groups, including looking up the status of transactions via a third-party API. Built using C#, deployed to an Azure WebApp.
+**Designed and developed a fully functional Telegram bot that provided answers to commonly asked questions by various merchant support groups, including looking up the status of transactions via a third-party API. Built using C#, deployed to an Azure WebApp.**
 ---
 
 ## Features
@@ -25,9 +25,9 @@ Designed and developed a fully functional Telegram bot that provided answers to 
 ## Tech Stack
 
 - **Language:** C# (.NET 8)
-- **Telegram SDK:** Telegram.Bot 19.x
+- **Telegram SDK:** Telegram.Bot 19
 - **Hosting:** Azure Functions
-- **API Integration:** RESTful backend (e.g., `getstatusBOT.asp`, `insertBlacklist.asp`)
+- **API Integration:** RESTful backend
 - **Storage:** Text files for mappings and descriptors
 
 ---
@@ -37,7 +37,6 @@ Designed and developed a fully functional Telegram bot that provided answers to 
   - **Server Status**
   - **Blacklist**
   - **Descriptors**
-  - 
 ---
 
 ## License
